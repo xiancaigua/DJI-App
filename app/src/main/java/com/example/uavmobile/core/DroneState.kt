@@ -20,11 +20,25 @@ data class DroneState(
     val isArmed: Boolean = false,
     val latitude: Double? = null,
     val longitude: Double? = null,
+    val homeLatitude: Double? = null,
+    val homeLongitude: Double? = null,
     val altitudeMeters: Double? = null,
     val headingDegrees: Float? = null,
     val missionStatus: String = "",
     val statusMessage: String = "",
 )
+
+fun DroneState.hasValidCoordinates(): Boolean {
+    val lat = latitude
+    val lon = longitude
+    return lat != null && lon != null && !(lat == 0.0 && lon == 0.0)
+}
+
+fun DroneState.hasValidHomeCoordinates(): Boolean {
+    val lat = homeLatitude
+    val lon = homeLongitude
+    return lat != null && lon != null && !(lat == 0.0 && lon == 0.0)
+}
 
 fun TelemetrySnapshot.toDroneState(): DroneState {
     return DroneState(
@@ -33,6 +47,8 @@ fun TelemetrySnapshot.toDroneState(): DroneState {
         isArmed = armed,
         latitude = latitude,
         longitude = longitude,
+        homeLatitude = homeLatitude.takeIf { homeAvailable },
+        homeLongitude = homeLongitude.takeIf { homeAvailable },
         altitudeMeters = relativeAltitudeM,
         headingDegrees = headingDeg,
         missionStatus = missionStage,

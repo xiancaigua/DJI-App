@@ -8,6 +8,7 @@ import com.example.uavmobile.data.model.MissionSummary
 import com.example.uavmobile.data.model.MissionWaypoint
 import com.example.uavmobile.data.model.TelemetrySnapshot
 import com.example.uavmobile.data.rosbridge.RosbridgeClient
+import com.example.uavmobile.debug.DeveloperLogStore
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -26,6 +27,10 @@ import org.json.JSONObject
 class UavRepository(
     private val rosbridgeClient: RosbridgeClient = RosbridgeClient(),
 ) {
+    private companion object {
+        private const val LOG_SOURCE = "UavRepository"
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val clientId = "android-${System.currentTimeMillis()}"
 
@@ -48,7 +53,15 @@ class UavRepository(
             rosbridgeClient.publications.collect { publication ->
                 when (publication.topic) {
                     "/mobile/telemetry" -> _telemetry.value = publication.payload.toTelemetrySnapshot()
-                    "/mobile/events" -> prependEvent(publication.payload.toMobileEvent())
+                    "/mobile/events" -> {
+                        val event = publication.payload.toMobileEvent()
+                        prependEvent(event)
+                        DeveloperLogStore.info(
+                            LOG_SOURCE,
+                            "ROS event ${event.code}",
+                            "${event.level}: ${event.message}",
+                        )
+                    }
                 }
             }
         }
@@ -57,6 +70,7 @@ class UavRepository(
             rosbridgeClient.connectionStatus.collect { status ->
                 when (status) {
                     ConnectionStatus.CONNECTED -> {
+                        DeveloperLogStore.info(LOG_SOURCE, "ROS bridge connected")
                         if (!sessionPrimed) {
                             sessionPrimed = true
                             rosbridgeClient.subscribe("/mobile/telemetry", throttleRateMs = 200)
@@ -71,6 +85,7 @@ class UavRepository(
                     ConnectionStatus.FAILED,
                     ConnectionStatus.CONNECTING,
                     -> {
+                        DeveloperLogStore.warn(LOG_SOURCE, "ROS bridge status changed", status.name)
                         if (status != ConnectionStatus.CONNECTED) {
                             sessionPrimed = false
                             heartbeatJob?.cancel()
@@ -82,27 +97,34 @@ class UavRepository(
     }
 
     fun connect(config: ConnectionConfig) {
+        DeveloperLogStore.info(LOG_SOURCE, "Connecting to ROS bridge", config.websocketUrl)
         rosbridgeClient.connect(config.websocketUrl)
     }
 
     fun disconnect() {
         heartbeatJob?.cancel()
         sessionPrimed = false
+        DeveloperLogStore.info(LOG_SOURCE, "Disconnecting ROS bridge")
         rosbridgeClient.disconnect()
     }
 
     suspend fun refreshMissions(): ActionResult {
+        DeveloperLogStore.debug(LOG_SOURCE, "Refreshing ROS mission list")
         val response = rosbridgeClient.callService("/mobile/mission/list")
         val result = response.toActionResult()
         if (result.success) {
             val values = response.optJSONObject("values") ?: JSONObject()
             val missionsJson = values.optJSONArray("missions") ?: JSONArray()
             _missions.value = missionsJson.toMissionList()
+            DeveloperLogStore.info(LOG_SOURCE, "ROS mission list refreshed", "count=${_missions.value.size}")
+        } else {
+            DeveloperLogStore.warn(LOG_SOURCE, "ROS mission list refresh failed", result.message)
         }
         return result
     }
 
     suspend fun uploadMission(missionId: String, waypoints: List<MissionWaypoint>): ActionResult {
+        DeveloperLogStore.info(LOG_SOURCE, "Uploading ROS mission", "missionId=$missionId, waypoints=${waypoints.size}")
         val payload = JSONObject()
             .put("mission_id", missionId)
             .put("waypoints", JSONArray().apply {
@@ -121,6 +143,8 @@ class UavRepository(
         val result = response.toActionResult()
         if (result.success) {
             refreshMissions()
+        } else {
+            DeveloperLogStore.warn(LOG_SOURCE, "ROS mission upload failed", result.message)
         }
         return result
     }
@@ -136,6 +160,7 @@ class UavRepository(
     suspend fun land(missionId: String): ActionResult = missionCommand("/mobile/mission/land", missionId)
 
     private suspend fun missionCommand(serviceName: String, missionId: String): ActionResult {
+        DeveloperLogStore.info(LOG_SOURCE, "Sending ROS mission command", "$serviceName missionId=$missionId")
         val response = rosbridgeClient.callService(
             service = serviceName,
             args = JSONObject().put("mission_id", missionId),
@@ -143,6 +168,8 @@ class UavRepository(
         val result = response.toActionResult()
         if (result.success) {
             refreshMissions()
+        } else {
+            DeveloperLogStore.warn(LOG_SOURCE, "ROS mission command failed", "$serviceName -> ${result.message}")
         }
         return result
     }

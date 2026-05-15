@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.uavmobile.BuildConfig
 import com.example.uavmobile.core.DjiAircraftFamily
 import com.example.uavmobile.core.DroneBackend
 import com.example.uavmobile.data.model.ConnectionStatus
@@ -208,6 +209,14 @@ private fun DjiBackendCard(
 
             Text("Permissions", fontWeight = FontWeight.Medium)
             Text(state.djiPermissionStatusMessage)
+            Text(
+                "Android applicationId: ${BuildConfig.APPLICATION_ID}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "DJI Developer Center Package Name must exactly match the applicationId above.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (!state.djiPermissionsGranted) {
                 Button(onClick = onRequestDjiPermissions) {
                     Text("Grant DJI Permissions")

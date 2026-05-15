@@ -1,5 +1,6 @@
 package com.example.uavmobile.dji
 
+import com.example.uavmobile.debug.DeveloperLogStore
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.product.ProductType
@@ -58,5 +59,10 @@ object DjiConnectionManager {
                 productType?.let { append(", productType=$it") }
             },
         )
+        if (connected) {
+            DeveloperLogStore.info("DjiConnectionManager", _connectionState.value.statusMessage)
+        } else {
+            DeveloperLogStore.warn("DjiConnectionManager", _connectionState.value.statusMessage)
+        }
     }
 }

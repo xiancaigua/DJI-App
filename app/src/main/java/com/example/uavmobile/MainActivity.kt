@@ -1,6 +1,7 @@
 package com.example.uavmobile
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         verifyLifecycleComposeHost()
         syncDjiPermissionState()
+        handleDeveloperIntent(intent)
         setContent {
             val lifecycleOwner = PlatformLocalLifecycleOwner.current
             CompositionLocalProvider(
@@ -49,6 +51,12 @@ class MainActivity : ComponentActivity() {
         syncDjiPermissionState()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeveloperIntent(intent)
+    }
+
     private fun requestDjiPermissions() {
         val snapshot = DjiPermissionManager.evaluate(this)
         viewModel.onDjiPermissionStateChanged(snapshot)
@@ -66,5 +74,15 @@ class MainActivity : ComponentActivity() {
         check(this is LifecycleOwner) {
             "MainActivity must provide LifecycleOwner for collectAsStateWithLifecycle"
         }
+    }
+
+    private fun handleDeveloperIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_DEVELOPER_PANEL, false) == true) {
+            viewModel.openDeveloperPanel()
+        }
+    }
+
+    companion object {
+        private const val EXTRA_OPEN_DEVELOPER_PANEL = "openDeveloperPanel"
     }
 }

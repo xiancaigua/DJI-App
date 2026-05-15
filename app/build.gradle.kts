@@ -18,6 +18,9 @@ val djiWpmzVersion = "1.0.4.0"
 val composeBomVersion = "2024.09.00"
 val activityComposeVersion = "1.9.2"
 val lifecycleVersion = "2.8.6"
+val appApplicationId = providers.gradleProperty("APP_APPLICATION_ID")
+    .orElse(localProperties.getProperty("APP_APPLICATION_ID") ?: "com.example.uavmobile")
+    .get()
 val djiAppKey = providers.gradleProperty("AIRCRAFT_API_KEY")
     .orElse(localProperties.getProperty("AIRCRAFT_API_KEY") ?: "")
     .get()
@@ -31,7 +34,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.uavmobile"
+        applicationId = appApplicationId
         minSdk = 26
         targetSdk = 34
         versionCode = 1

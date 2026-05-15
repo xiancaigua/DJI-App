@@ -3,13 +3,9 @@ package com.example.uavmobile.dji
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
-import android.os.Build
 import android.util.Log
 import com.example.uavmobile.BuildConfig
-import dji.sdk.keyvalue.key.FlightControllerKey
-import dji.sdk.keyvalue.key.KeyTools
-import dji.sdk.keyvalue.key.ProductKey
-import dji.sdk.keyvalue.value.common.LocationCoordinate3D
+import com.example.uavmobile.debug.DeveloperLogStore
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.SDKManager
@@ -48,12 +44,13 @@ object DjiMsdkManager {
 
     fun init(context: Context) {
         appContextRef.set(context.applicationContext)
-        runtimeBlockedReason.set(detectBlockedRuntimeReason())
+        runtimeBlockedReason.set(DjiRuntimeEnvironment.skipReason())
 
         if (runtimeBlockedReason.get() != null) {
             _initState.value = DjiSdkInitState.SKIPPED
             _statusMessage.value = runtimeBlockedReason.get().orEmpty()
             Log.i(TAG, _statusMessage.value)
+            DeveloperLogStore.warn(TAG, "DJI runtime skipped", _statusMessage.value)
             return
         }
 
@@ -61,17 +58,11 @@ object DjiMsdkManager {
             _initState.value = DjiSdkInitState.SKIPPED
             _statusMessage.value = "DJI runtime disabled by configuration"
             Log.i(TAG, _statusMessage.value)
+            DeveloperLogStore.warn(TAG, "DJI runtime disabled", _statusMessage.value)
             return
         }
 
         registerNetworkRecoveryCallback(context.applicationContext)
-
-        if (!isSdkPresent()) {
-            _initState.value = DjiSdkInitState.FAILED
-            _statusMessage.value = "DJI MSDK classes are not available in the current build"
-            Log.e(TAG, _statusMessage.value)
-            return
-        }
 
         if (initRequested.getAndSet(true)) {
             if (sdkInitComplete.get() && _initState.value != DjiSdkInitState.REGISTERED) {
@@ -83,63 +74,72 @@ object DjiMsdkManager {
         _initState.value = DjiSdkInitState.INITIALIZING
         _statusMessage.value = "Initializing DJI MSDK"
         Log.i(TAG, _statusMessage.value)
-
-        val callback = object : SDKManagerCallback {
-            override fun onInitProcess(event: DJISDKInitEvent?, totalProcess: Int) {
-                val eventText = event?.name ?: "UNKNOWN"
-                _statusMessage.value = "Initializing DJI MSDK: $eventText ($totalProcess)"
-                Log.i(TAG, _statusMessage.value)
-
-                if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
-                    sdkInitComplete.set(true)
-                    _initState.value = DjiSdkInitState.READY_TO_REGISTER
-                    _statusMessage.value = "DJI MSDK initialized, registering app"
-                    retryRegisterIfNeeded("SDK init complete")
-                }
-            }
-
-            override fun onRegisterSuccess() {
-                registerInFlight.set(false)
-                _initState.value = DjiSdkInitState.REGISTERED
-                _statusMessage.value = "DJI registerApp succeeded, waiting for product connection"
-                Log.i(TAG, _statusMessage.value)
-            }
-
-            override fun onRegisterFailure(error: IDJIError?) {
-                registerInFlight.set(false)
-                _initState.value = DjiSdkInitState.FAILED
-                _statusMessage.value = "DJI registerApp failed: ${DjiErrorFormatter.describe(error)}"
-                Log.e(TAG, _statusMessage.value)
-            }
-
-            override fun onProductConnect(productId: Int) {
-                DjiConnectionManager.onProductConnected(productId)
-                Log.i(TAG, "DJI product connected: productId=$productId")
-            }
-
-            override fun onProductDisconnect(productId: Int) {
-                DjiConnectionManager.onProductDisconnected(productId)
-                Log.w(TAG, "DJI product disconnected: productId=$productId")
-            }
-
-            override fun onProductChanged(productId: Int) {
-                DjiConnectionManager.onProductChanged(productId)
-                Log.i(TAG, "DJI product changed: productId=$productId")
-            }
-
-            override fun onDatabaseDownloadProgress(current: Long, total: Long) {
-                if (total > 0L) {
-                    Log.i(TAG, "DJI database download progress: $current/$total")
-                }
-            }
-        }
+        DeveloperLogStore.info(TAG, "Initializing DJI MSDK")
 
         runCatching {
+            val callback = object : SDKManagerCallback {
+                override fun onInitProcess(event: DJISDKInitEvent?, totalProcess: Int) {
+                    val eventText = event?.name ?: "UNKNOWN"
+                    _statusMessage.value = "Initializing DJI MSDK: $eventText ($totalProcess)"
+                    Log.i(TAG, _statusMessage.value)
+                    DeveloperLogStore.debug(TAG, "DJI init progress", _statusMessage.value)
+
+                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
+                        sdkInitComplete.set(true)
+                        _initState.value = DjiSdkInitState.READY_TO_REGISTER
+                        _statusMessage.value = "DJI MSDK initialized, registering app"
+                        DeveloperLogStore.info(TAG, "DJI SDK initialized", "registerApp next")
+                        retryRegisterIfNeeded("SDK init complete")
+                    }
+                }
+
+                override fun onRegisterSuccess() {
+                    registerInFlight.set(false)
+                    _initState.value = DjiSdkInitState.REGISTERED
+                    _statusMessage.value = "DJI registerApp succeeded, waiting for product connection"
+                    Log.i(TAG, _statusMessage.value)
+                    DeveloperLogStore.info(TAG, "DJI registerApp succeeded")
+                }
+
+                override fun onRegisterFailure(error: IDJIError?) {
+                    registerInFlight.set(false)
+                    _initState.value = DjiSdkInitState.FAILED
+                    _statusMessage.value = "DJI registerApp failed: ${DjiErrorFormatter.describe(error)}"
+                    Log.e(TAG, _statusMessage.value)
+                    DeveloperLogStore.error(TAG, "DJI registerApp failed", _statusMessage.value)
+                }
+
+                override fun onProductConnect(productId: Int) {
+                    DjiConnectionManager.onProductConnected(productId)
+                    Log.i(TAG, "DJI product connected: productId=$productId")
+                    DeveloperLogStore.info(TAG, "DJI product connected", "productId=$productId")
+                }
+
+                override fun onProductDisconnect(productId: Int) {
+                    DjiConnectionManager.onProductDisconnected(productId)
+                    Log.w(TAG, "DJI product disconnected: productId=$productId")
+                    DeveloperLogStore.warn(TAG, "DJI product disconnected", "productId=$productId")
+                }
+
+                override fun onProductChanged(productId: Int) {
+                    DjiConnectionManager.onProductChanged(productId)
+                    Log.i(TAG, "DJI product changed: productId=$productId")
+                    DeveloperLogStore.info(TAG, "DJI product changed", "productId=$productId")
+                }
+
+                override fun onDatabaseDownloadProgress(current: Long, total: Long) {
+                    if (total > 0L) {
+                        Log.i(TAG, "DJI database download progress: $current/$total")
+                        DeveloperLogStore.debug(TAG, "DJI DB download", "$current/$total")
+                    }
+                }
+            }
             SDKManager.getInstance().init(context.applicationContext, callback)
         }.onFailure { throwable ->
             _initState.value = DjiSdkInitState.FAILED
             _statusMessage.value = "DJI init() failed: ${throwable.message}"
             Log.e(TAG, _statusMessage.value, throwable)
+            DeveloperLogStore.error(TAG, "DJI init() failed", throwable.message)
         }
     }
 
@@ -156,8 +156,9 @@ object DjiMsdkManager {
 
         registerInFlight.set(true)
         _initState.value = DjiSdkInitState.REGISTERING
-        _statusMessage.value = "Calling registerApp(): $reason"
+        _statusMessage.value = "Calling registerApp(): $reason (applicationId=${BuildConfig.APPLICATION_ID})"
         Log.i(TAG, _statusMessage.value)
+        DeveloperLogStore.info(TAG, "Calling registerApp()", _statusMessage.value)
 
         runCatching {
             SDKManager.getInstance().registerApp()
@@ -166,6 +167,7 @@ object DjiMsdkManager {
             _initState.value = DjiSdkInitState.FAILED
             _statusMessage.value = "registerApp() invocation failed: ${throwable.message}"
             Log.e(TAG, _statusMessage.value, throwable)
+            DeveloperLogStore.error(TAG, "registerApp() invocation failed", throwable.message)
         }
     }
 
@@ -173,12 +175,15 @@ object DjiMsdkManager {
         if (!BuildConfig.DJI_ENABLE_RUNTIME || runtimeBlockedReason.get() != null) {
             return false
         }
-        return runCatching {
-            KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D)
-            KeyTools.createKey(ProductKey.KeyConnection)
-            LocationCoordinate3D()
-            SDKManager.getInstance()
-        }.isSuccess
+        return when (_initState.value) {
+            DjiSdkInitState.INITIALIZING,
+            DjiSdkInitState.READY_TO_REGISTER,
+            DjiSdkInitState.REGISTERING,
+            DjiSdkInitState.REGISTERED,
+            -> true
+
+            else -> false
+        }
     }
 
     fun isWpmzPresent(): Boolean {
@@ -202,35 +207,11 @@ object DjiMsdkManager {
     }
 
     fun isProbablyVirtualDevice(): Boolean {
-        val fingerprint = Build.FINGERPRINT.lowercase()
-        val model = Build.MODEL.lowercase()
-        val manufacturer = Build.MANUFACTURER.lowercase()
-        val brand = Build.BRAND.lowercase()
-        val device = Build.DEVICE.lowercase()
-        val hardware = Build.HARDWARE.lowercase()
-        val product = Build.PRODUCT.lowercase()
-
-        return fingerprint.startsWith("generic") ||
-            fingerprint.contains("emulator") ||
-            fingerprint.contains("vbox") ||
-            model.contains("android sdk built for") ||
-            model.contains("emulator") ||
-            model.contains("sdk_gphone") ||
-            manufacturer.contains("genymotion") ||
-            brand.startsWith("generic") ||
-            device.startsWith("generic") ||
-            hardware.contains("goldfish") ||
-            hardware.contains("ranchu") ||
-            hardware.contains("vbox") ||
-            product.contains("sdk") ||
-            product.contains("emulator")
+        return DjiRuntimeEnvironment.isProbablyVirtualDevice()
     }
 
     private fun detectBlockedRuntimeReason(): String? {
-        if (isProbablyVirtualDevice()) {
-            return "Running on a virtual device, DJI runtime init is skipped"
-        }
-        return null
+        return DjiRuntimeEnvironment.skipReason()
     }
 
     private fun registerNetworkRecoveryCallback(context: Context) {
@@ -252,6 +233,7 @@ object DjiMsdkManager {
         }.onFailure { throwable ->
             networkCallbackRegistered.set(false)
             Log.w(TAG, "Unable to register network recovery callback: ${throwable.message}")
+            DeveloperLogStore.warn(TAG, "Unable to register network recovery callback", throwable.message)
         }
     }
 }

@@ -29,6 +29,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.uavmobile.core.DjiAircraftFamily
 import com.example.uavmobile.core.DroneBackend
+import com.example.uavmobile.core.hasValidCoordinates
+import com.example.uavmobile.core.hasValidHomeCoordinates
 import com.example.uavmobile.data.model.MissionWaypointDraft
 import com.example.uavmobile.ui.theme.Alert
 import com.example.uavmobile.ui.theme.SkyAccent
@@ -43,6 +45,7 @@ fun MissionScreen(
     state: UavUiState,
     onMissionIdChanged: (String) -> Unit,
     onAddWaypoint: () -> Unit,
+    onImportCurrentPosition: () -> Unit,
     onRemoveWaypoint: (Int) -> Unit,
     onWaypointChanged: (Int, MissionWaypointDraft) -> Unit,
     onUploadMission: () -> Unit,
@@ -86,13 +89,17 @@ fun MissionScreen(
             singleLine = true,
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onAddWaypoint) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = onAddWaypoint, modifier = Modifier.weight(1f)) {
                 Text("Add Waypoint")
             }
-            Button(onClick = onUploadMission, enabled = !state.busy) {
-                Text("Upload Mission")
+            Button(onClick = onImportCurrentPosition, enabled = !state.busy, modifier = Modifier.weight(1f)) {
+                Text("Import Current Position")
             }
+        }
+
+        Button(onClick = onUploadMission, enabled = !state.busy) {
+            Text("Upload Mission")
         }
 
         state.draftWaypoints.forEachIndexed { index, waypoint ->
@@ -132,11 +139,11 @@ private fun MissionCanvasCard(state: UavUiState) {
 
                     val allPoints = buildList {
                         addAll(parsedPoints)
-                        if (state.telemetry.homeAvailable) {
-                            add(Offset(state.telemetry.homeLongitude.toFloat(), state.telemetry.homeLatitude.toFloat()))
+                        if (state.currentDroneState.hasValidHomeCoordinates()) {
+                            add(Offset(state.currentDroneState.homeLongitude!!.toFloat(), state.currentDroneState.homeLatitude!!.toFloat()))
                         }
-                        if (state.telemetry.latitude != 0.0 || state.telemetry.longitude != 0.0) {
-                            add(Offset(state.telemetry.longitude.toFloat(), state.telemetry.latitude.toFloat()))
+                        if (state.currentDroneState.hasValidCoordinates()) {
+                            add(Offset(state.currentDroneState.longitude!!.toFloat(), state.currentDroneState.latitude!!.toFloat()))
                         }
                     }
 
@@ -188,11 +195,29 @@ private fun MissionCanvasCard(state: UavUiState) {
                         drawCircle(color = SkyAccent, radius = 11f, center = point)
                     }
 
-                    if (state.telemetry.homeAvailable) {
+                    if (state.currentDroneState.hasValidHomeCoordinates()) {
                         drawCircle(
                             color = Alert,
                             radius = 12f,
-                            center = project(Offset(state.telemetry.homeLongitude.toFloat(), state.telemetry.homeLatitude.toFloat())),
+                            center = project(
+                                Offset(
+                                    state.currentDroneState.homeLongitude!!.toFloat(),
+                                    state.currentDroneState.homeLatitude!!.toFloat(),
+                                ),
+                            ),
+                        )
+                    }
+
+                    if (state.currentDroneState.hasValidCoordinates()) {
+                        drawCircle(
+                            color = Alert.copy(alpha = 0.6f),
+                            radius = 10f,
+                            center = project(
+                                Offset(
+                                    state.currentDroneState.longitude!!.toFloat(),
+                                    state.currentDroneState.latitude!!.toFloat(),
+                                ),
+                            ),
                         )
                     }
                 }

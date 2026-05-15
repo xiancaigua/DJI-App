@@ -9,6 +9,7 @@ import com.example.uavmobile.core.MissionExecutionState
 import com.example.uavmobile.core.PreparedMission
 import com.example.uavmobile.core.Waypoint
 import com.example.uavmobile.data.model.ActionResult
+import com.example.uavmobile.debug.DeveloperLogStore
 import dji.sdk.wpmz.value.mission.WaylineAltitudeMode
 import dji.sdk.wpmz.value.mission.WaylineCheckErrorMsg
 import dji.sdk.wpmz.value.mission.WaylineCoordinateMode
@@ -74,6 +75,7 @@ object DjiWaypointMissionManager {
         when (aircraftResolution) {
             is DjiAircraftResolution.Supported -> {
                 Log.i(TAG, aircraftResolution.message)
+                DeveloperLogStore.info(TAG, "Aircraft resolution", aircraftResolution.message)
             }
 
             is DjiAircraftResolution.Missing -> {
@@ -94,6 +96,7 @@ object DjiWaypointMissionManager {
                 waypointCount = waypoints.size,
                 message = "Preparing DJI mission package",
             )
+            DeveloperLogStore.info(TAG, "Preparing DJI mission", "missionId=$missionId, waypoints=${waypoints.size}")
 
             val appContext = DjiMsdkManager.requireAppContext()
             val missionDir = appContext.getExternalFilesDir("dji-waypoint") ?: appContext.cacheDir
@@ -170,6 +173,7 @@ object DjiWaypointMissionManager {
                 waypointCount = waypoints.size,
                 message = "DJI mission prepared at ${kmzFile.absolutePath}",
             )
+            DeveloperLogStore.info(TAG, "DJI mission prepared", kmzFile.absolutePath)
 
             ActionResult(
                 success = true,
@@ -190,6 +194,7 @@ object DjiWaypointMissionManager {
             state = MissionExecutionState.UPLOADING,
             message = "Uploading ${mission.missionId} to the aircraft",
         )
+        DeveloperLogStore.info(TAG, "Uploading DJI mission", mission.missionId)
 
         return suspendCancellableCoroutine { continuation ->
             SdkWaypointMissionManager.getInstance().pushKMZFileToAircraft(
@@ -209,6 +214,7 @@ object DjiWaypointMissionManager {
                             progress = 1.0,
                             message = "Uploaded ${mission.missionId} to the aircraft",
                         )
+                        DeveloperLogStore.info(TAG, "DJI mission uploaded", mission.missionId)
                         continuation.resume(ActionResult(true, "Uploaded DJI mission ${mission.missionId}"))
                     }
 
@@ -227,6 +233,7 @@ object DjiWaypointMissionManager {
             state = MissionExecutionState.STARTING,
             message = "Starting DJI mission ${mission.missionId}",
         )
+        DeveloperLogStore.info(TAG, "Starting DJI mission", mission.missionId)
 
         return suspendCancellableCoroutine { continuation ->
             SdkWaypointMissionManager.getInstance().startMission(
@@ -238,6 +245,7 @@ object DjiWaypointMissionManager {
                             state = MissionExecutionState.RUNNING,
                             message = "DJI mission ${mission.missionId} started",
                         )
+                        DeveloperLogStore.info(TAG, "DJI mission started", mission.missionId)
                         continuation.resume(ActionResult(true, "Started DJI mission ${mission.missionId}"))
                     }
 
@@ -254,6 +262,7 @@ object DjiWaypointMissionManager {
             state = MissionExecutionState.PAUSED,
             message = "Requesting DJI mission pause",
         )
+        DeveloperLogStore.info(TAG, "Pausing DJI mission")
 
         return suspendCancellableCoroutine { continuation ->
             SdkWaypointMissionManager.getInstance().pauseMission(object : CommonCallbacks.CompletionCallback {
@@ -262,6 +271,7 @@ object DjiWaypointMissionManager {
                         state = MissionExecutionState.PAUSED,
                         message = "DJI mission paused",
                     )
+                    DeveloperLogStore.info(TAG, "DJI mission paused")
                     continuation.resume(ActionResult(true, "Paused DJI mission"))
                 }
 
@@ -278,6 +288,7 @@ object DjiWaypointMissionManager {
             state = MissionExecutionState.STOPPING,
             message = "Stopping DJI mission ${mission.missionId}",
         )
+        DeveloperLogStore.info(TAG, "Stopping DJI mission", mission.missionId)
 
         return suspendCancellableCoroutine { continuation ->
             SdkWaypointMissionManager.getInstance().stopMission(
@@ -288,6 +299,7 @@ object DjiWaypointMissionManager {
                             state = MissionExecutionState.STOPPED,
                             message = "DJI mission ${mission.missionId} stopped",
                         )
+                        DeveloperLogStore.info(TAG, "DJI mission stopped", mission.missionId)
                         continuation.resume(ActionResult(true, "Stopped DJI mission ${mission.missionId}"))
                     }
 
@@ -360,6 +372,11 @@ object DjiWaypointMissionManager {
                 val waypointCount = _missionState.value.waypointCount.coerceAtLeast(1)
                 val normalizedProgress = ((info.currentWaypointIndex + 1).toDouble() / waypointCount)
                     .coerceIn(0.0, 1.0)
+                DeveloperLogStore.debug(
+                    TAG,
+                    "DJI mission progress",
+                    "mission=${info.missionFileName}, waypointIndex=${info.currentWaypointIndex}",
+                )
                 _missionState.value = _missionState.value.copy(
                     state = MissionExecutionState.RUNNING,
                     currentWaypointIndex = info.currentWaypointIndex,
@@ -370,6 +387,7 @@ object DjiWaypointMissionManager {
 
             override fun onWaylineExecutingInterruptReasonUpdate(error: IDJIError?) {
                 if (error != null) {
+                    DeveloperLogStore.error(TAG, "DJI mission interrupted", DjiErrorFormatter.describe(error))
                     _missionState.value = _missionState.value.copy(
                         state = MissionExecutionState.FAILED,
                         message = "Mission interrupted: ${DjiErrorFormatter.describe(error)}",
@@ -386,6 +404,7 @@ object DjiWaypointMissionManager {
             message = message,
         )
         Log.e(TAG, message)
+        DeveloperLogStore.error(TAG, message)
         return ActionResult(false, message, -1)
     }
 
@@ -395,6 +414,7 @@ object DjiWaypointMissionManager {
             message = message,
         )
         Log.e(TAG, message)
+        DeveloperLogStore.error(TAG, message)
         return ActionResult(false, message, -1)
     }
 }

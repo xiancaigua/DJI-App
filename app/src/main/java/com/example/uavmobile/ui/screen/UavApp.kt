@@ -1,5 +1,7 @@
 package com.example.uavmobile.ui.screen
 
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,7 +49,7 @@ private enum class AppSection(
     EVENTS("Events", Icons.Outlined.Notifications),
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun UavApp(
     viewModel: UavViewModel,
@@ -55,6 +57,16 @@ fun UavApp(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var currentSection by rememberSaveable { mutableStateOf(AppSection.CONNECT) }
+
+    if (state.developerPanelVisible) {
+        DeveloperPanelScreen(
+            state = state,
+            onClose = viewModel::closeDeveloperPanel,
+            onRefreshSnapshot = viewModel::refreshDeveloperSnapshot,
+            onClearLogs = viewModel::clearDeveloperLogs,
+        )
+        return
+    }
 
     Scaffold(
         topBar = {
@@ -76,6 +88,10 @@ fun UavApp(
                 },
                 actions = {
                     AssistChip(
+                        modifier = Modifier.combinedClickable(
+                            onClick = {},
+                            onLongClick = viewModel::openDeveloperPanel,
+                        ),
                         onClick = {},
                         label = {
                             Text(
@@ -142,6 +158,7 @@ fun UavApp(
                     state = state,
                     onMissionIdChanged = viewModel::onDraftMissionIdChanged,
                     onAddWaypoint = viewModel::addWaypoint,
+                    onImportCurrentPosition = viewModel::importCurrentPositionAsWaypoint,
                     onRemoveWaypoint = viewModel::removeWaypoint,
                     onWaypointChanged = viewModel::updateWaypoint,
                     onUploadMission = viewModel::uploadDraftMission,

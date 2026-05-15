@@ -5,12 +5,14 @@ import android.content.Context
 import android.util.Log
 import com.cySdkyc.clx.Helper
 import com.example.uavmobile.dji.DjiMsdkManager
+import com.example.uavmobile.dji.DjiRuntimeEnvironment
 
 class MApplication : Application() {
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
-        if (DjiMsdkManager.isProbablyVirtualDevice()) {
-            Log.i(TAG, "Skipping DJI Helper.install on virtual device")
+        val runtimeDecision = DjiRuntimeEnvironment.currentDecision()
+        if (runtimeDecision.shouldSkip) {
+            Log.i(TAG, runtimeDecision.reason ?: "Skipping DJI Helper.install")
             return
         }
 
@@ -23,6 +25,11 @@ class MApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        val runtimeDecision = DjiRuntimeEnvironment.currentDecision()
+        if (runtimeDecision.shouldSkip) {
+            Log.i(TAG, runtimeDecision.reason ?: "Skipping DJI MSDK init")
+            return
+        }
         DjiMsdkManager.init(this)
     }
 
