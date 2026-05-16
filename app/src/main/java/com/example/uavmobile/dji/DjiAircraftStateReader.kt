@@ -5,7 +5,6 @@ import com.example.uavmobile.core.DroneConnectionState
 import com.example.uavmobile.core.DroneState
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
-import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.v5.manager.KeyManager
@@ -21,21 +20,21 @@ object DjiAircraftStateReader {
                 )
             }
 
+            val connectionSnapshot = DjiConnectionManager.connectionState.value
+            if (!connectionSnapshot.connected) {
+                return@runCatching DroneState(
+                    backend = DroneBackend.DJI,
+                    connectionState = DroneConnectionState.DISCONNECTED,
+                    statusMessage = connectionSnapshot.statusMessage,
+                )
+            }
+
             val keyManager = KeyManager.getInstance()
             if (keyManager == null) {
                 return@runCatching DroneState(
                     backend = DroneBackend.DJI,
                     connectionState = DroneConnectionState.DISCONNECTED,
                     statusMessage = "DJI KeyManager is not available",
-                )
-            }
-
-            val connected = keyManager.getValue(KeyTools.createKey(ProductKey.KeyConnection)) ?: false
-            if (!connected) {
-                return@runCatching DroneState(
-                    backend = DroneBackend.DJI,
-                    connectionState = DroneConnectionState.DISCONNECTED,
-                    statusMessage = DjiConnectionManager.describeStatus(),
                 )
             }
 

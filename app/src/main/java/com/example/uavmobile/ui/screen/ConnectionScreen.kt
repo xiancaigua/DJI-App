@@ -247,15 +247,24 @@ private fun StatusCard(state: UavUiState) {
             Text("顶部状态：${state.topStatusLabel}")
             Text("飞机连接：${if (state.vehicleConnected) "是" else "否"}")
             if (state.activeBackend == DroneBackend.SELF_ROS) {
-                Text("后端链路：${state.rosConnectionStatus.name}")
+                Text("Backend link status：${state.rosConnectionStatus.name}")
+                Text("Vehicle / Aircraft connection status：${if (state.telemetry.connected) "飞机已连接" else "飞机离线"}")
                 Text("WebSocket：${state.connectionConfig.websocketUrl}")
                 Text("遥测连机：${if (state.telemetry.connected) "是" else "否"}")
                 Text("会话活跃：${if (state.telemetry.sessionActive) "是" else "否"}")
                 Text("最新告警：${state.telemetry.latestAlert.ifBlank { "无" }}")
             } else {
-                Text("DJI 注册状态：${state.djiSdkInitState.name}")
-                Text("DJI 状态：${state.djiSdkStatusMessage}")
-                Text("飞机状态：${state.djiProductStatusMessage}")
+                Text("Backend link status：DJI MSDK")
+                Text("Vehicle / Aircraft connection status：${if (state.djiProductConnected) "DJI 飞机已连接" else "飞机离线"}")
+                Text("DJI SDK registration status：${state.djiSdkInitState.name}")
+                Text("DJI SDK 文本：${state.djiSdkStatusMessage}")
+                Text("DJI product connection status：${state.djiProductStatusMessage}")
+                Text("ProductKey.KeyConnection：${state.djiKeyConnectionValue?.let { if (it) "true" else "false" } ?: "无"}")
+                Text("ProductKey.KeyProductType：${state.djiProductTypeLabel.ifBlank { "无" }}")
+                Text("连接来源：${state.djiLastConnectionSource.ifBlank { "无" }}")
+                Text("最后刷新：${state.djiLastRefreshReason.ifBlank { "无" }}")
+                Text("最后错误：${state.djiLastRefreshError.ifBlank { "无" }}")
+                Text("Connection monitor：${if (state.djiConnectionMonitorRunning) "运行中" else "未运行"}，tick=${state.djiConnectionMonitorTickCount}")
                 Text("权限已授予：${if (state.djiPermissionsGranted) "是" else "否"}")
                 Text(
                     "模拟器只验证初始化和日志，不代表真实连机。",

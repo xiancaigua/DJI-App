@@ -9,10 +9,14 @@ import com.example.uavmobile.core.Waypoint
 import com.example.uavmobile.data.model.ActionResult
 import com.example.uavmobile.data.model.ConnectionConfig
 import com.example.uavmobile.data.repository.UavRepository
+import com.example.uavmobile.dji.DjiConnectionManager
+import com.example.uavmobile.dji.DjiProductConnectionReader
 import com.example.uavmobile.dji.DjiPermissionSnapshot
+import dji.sdk.keyvalue.value.product.ProductType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -21,6 +25,11 @@ import org.junit.Test
 class UavViewModelRoutingTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
+
+    @After
+    fun tearDown() {
+        DjiConnectionManager.resetForTest()
+    }
 
     @Test
     fun `ros backend mission actions route to self controller`() = runTest {
@@ -55,6 +64,8 @@ class UavViewModelRoutingTest {
 
     @Test
     fun `dji backend mission actions route to dji controller`() = runTest {
+        DjiConnectionManager.setConnectionReaderForTest(FakeConnectionReader(connectionValue = true))
+        DjiConnectionManager.refreshFromKeyManager("routing test")
         val selfController = FakeDroneController("self")
         val djiController = FakeDroneController("dji")
         val viewModel = UavViewModel(
@@ -158,5 +169,17 @@ class UavViewModelRoutingTest {
             landCalls += 1
             return ActionResult(true, "$name land ${missionId.orEmpty()}")
         }
+    }
+
+    private class FakeConnectionReader(
+        private val connectionValue: Boolean?,
+    ) : DjiProductConnectionReader {
+        override fun readConnection(): Boolean? = connectionValue
+
+        override fun readProductType(): ProductType? = null
+
+        override fun listenConnection(holder: Any, getOnce: Boolean, onValueChange: (Boolean?) -> Unit) = Unit
+
+        override fun cancelListen(holder: Any) = Unit
     }
 }

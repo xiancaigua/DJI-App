@@ -51,6 +51,7 @@ object DjiMsdkManager {
             _statusMessage.value = runtimeBlockedReason.get().orEmpty()
             Log.i(TAG, _statusMessage.value)
             DeveloperLogStore.warn(TAG, "DJI 运行时已跳过", _statusMessage.value)
+            DjiConnectionManager.stopConnectionMonitor("DJI runtime skipped")
             return
         }
 
@@ -59,6 +60,7 @@ object DjiMsdkManager {
             _statusMessage.value = "DJI 运行时已被配置关闭"
             Log.i(TAG, _statusMessage.value)
             DeveloperLogStore.warn(TAG, "DJI 运行时已关闭", _statusMessage.value)
+            DjiConnectionManager.stopConnectionMonitor("DJI runtime disabled")
             return
         }
 
@@ -94,11 +96,7 @@ object DjiMsdkManager {
                 }
 
                 override fun onRegisterSuccess() {
-                    registerInFlight.set(false)
-                    _initState.value = DjiSdkInitState.REGISTERED
-                    _statusMessage.value = "DJI registerApp 成功，等待飞机连接"
-                    Log.i(TAG, _statusMessage.value)
-                    DeveloperLogStore.info(TAG, "DJI registerApp 成功")
+                    handleRegisterSuccess("SDK callback")
                 }
 
                 override fun onRegisterFailure(error: IDJIError?) {
@@ -107,24 +105,37 @@ object DjiMsdkManager {
                     _statusMessage.value = "DJI registerApp 失败：${DjiErrorFormatter.describe(error)}"
                     Log.e(TAG, _statusMessage.value)
                     DeveloperLogStore.error(TAG, "DJI registerApp 失败", _statusMessage.value)
+                    DjiConnectionManager.stopConnectionMonitor("registerApp failure")
                 }
 
                 override fun onProductConnect(productId: Int) {
                     DjiConnectionManager.onProductConnected(productId)
                     Log.i(TAG, "DJI product connected: productId=$productId")
-                    DeveloperLogStore.info(TAG, "DJI 产品已连接", "productId=$productId")
+                    DeveloperLogStore.info(
+                        TAG,
+                        "DJI product callback: onProductConnect",
+                        "productId=$productId, keyConnection=${DjiConnectionManager.connectionState.value.keyConnectionValue}",
+                    )
                 }
 
                 override fun onProductDisconnect(productId: Int) {
                     DjiConnectionManager.onProductDisconnected(productId)
                     Log.w(TAG, "DJI product disconnected: productId=$productId")
-                    DeveloperLogStore.warn(TAG, "DJI 产品已断开", "productId=$productId")
+                    DeveloperLogStore.warn(
+                        TAG,
+                        "DJI product callback: onProductDisconnect",
+                        "productId=$productId, keyConnection=${DjiConnectionManager.connectionState.value.keyConnectionValue}",
+                    )
                 }
 
                 override fun onProductChanged(productId: Int) {
                     DjiConnectionManager.onProductChanged(productId)
                     Log.i(TAG, "DJI product changed: productId=$productId")
-                    DeveloperLogStore.info(TAG, "DJI 产品已变化", "productId=$productId")
+                    DeveloperLogStore.info(
+                        TAG,
+                        "DJI product callback: onProductChanged",
+                        "productId=$productId, keyConnection=${DjiConnectionManager.connectionState.value.keyConnectionValue}",
+                    )
                 }
 
                 override fun onDatabaseDownloadProgress(current: Long, total: Long) {
@@ -140,7 +151,23 @@ object DjiMsdkManager {
             _statusMessage.value = "DJI init() 失败：${throwable.message}"
             Log.e(TAG, _statusMessage.value, throwable)
             DeveloperLogStore.error(TAG, "DJI init() 失败", throwable.message)
+            DjiConnectionManager.stopConnectionMonitor("DJI init failed")
         }
+    }
+
+    internal fun handleRegisterSuccess(reason: String = "registerApp success") {
+        registerInFlight.set(false)
+        _initState.value = DjiSdkInitState.REGISTERED
+        DeveloperLogStore.info(TAG, "DJI registerApp 成功", reason)
+        val snapshot = DjiConnectionManager.refreshFromKeyManager("registerApp success")
+        DjiConnectionManager.startConnectionMonitor("registerApp success")
+        _statusMessage.value = buildString {
+            append("DJI registerApp 成功，已启动飞机连接监视器")
+            append("，KeyConnection=${snapshot.keyConnectionValue}")
+            append("，productType=${snapshot.productType?.name ?: "无"}")
+        }
+        Log.i(TAG, _statusMessage.value)
+        DeveloperLogStore.info(TAG, "DJI registerApp 后连接刷新完成", _statusMessage.value)
     }
 
     fun retryRegisterIfNeeded(reason: String = "manual retry") {
@@ -211,6 +238,28 @@ object DjiMsdkManager {
 
     private fun detectBlockedRuntimeReason(): String? {
         return DjiRuntimeEnvironment.skipReason()
+    }
+
+    internal fun setInitStateForTest(state: DjiSdkInitState, sdkReady: Boolean = state == DjiSdkInitState.REGISTERED) {
+        _initState.value = state
+        _statusMessage.value = when (state) {
+            DjiSdkInitState.REGISTERED -> "DJI registerApp 成功，测试状态"
+            DjiSdkInitState.FAILED -> "DJI registerApp 失败，测试状态"
+            else -> "DJI 测试状态：$state"
+        }
+        sdkInitComplete.set(sdkReady)
+        registerInFlight.set(false)
+    }
+
+    internal fun resetForTest() {
+        _initState.value = DjiSdkInitState.IDLE
+        _statusMessage.value = "DJI MSDK 尚未初始化"
+        appContextRef.set(null)
+        runtimeBlockedReason.set(null)
+        initRequested.set(false)
+        sdkInitComplete.set(false)
+        registerInFlight.set(false)
+        networkCallbackRegistered.set(false)
     }
 
     private fun registerNetworkRecoveryCallback(context: Context) {

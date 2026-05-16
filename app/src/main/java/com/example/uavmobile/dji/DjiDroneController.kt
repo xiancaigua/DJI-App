@@ -21,8 +21,19 @@ object DjiDroneController : DroneController {
         DjiMsdkManager.retryRegisterIfNeeded("DjiDroneController.connect()")
         val state = DjiMsdkManager.initState.value
         return when (state) {
-            DjiSdkInitState.REGISTERED ->
-                ActionResult(true, DjiMsdkManager.describeStatus())
+            DjiSdkInitState.REGISTERED -> {
+                val snapshot = DjiConnectionManager.refreshFromKeyManager("DjiDroneController.connect")
+                DjiConnectionManager.startConnectionMonitor("DjiDroneController.connect")
+                if (snapshot.connected) {
+                    ActionResult(true, "DJI 飞机已连接")
+                } else {
+                    ActionResult(
+                        success = true,
+                        message = "DJI SDK 已注册，正在等待飞机连接，连接监视器已启动。" +
+                            " KeyConnection=${snapshot.keyConnectionValue}, productType=${snapshot.productType?.name ?: "无"}",
+                    )
+                }
+            }
 
             DjiSdkInitState.SKIPPED,
             DjiSdkInitState.FAILED,
@@ -33,18 +44,30 @@ object DjiDroneController : DroneController {
     }
 
     override suspend fun disconnect(): ActionResult {
-        Log.i(TAG, "DJI disconnect requested; lifecycle remains managed by SDK/product state")
+        Log.i(TAG, "DJI disconnect requested; stopping local connection monitor")
+        DjiConnectionManager.stopConnectionMonitor("DjiDroneController.disconnect")
         return ActionResult(
             success = true,
-            message = "DJI 连接生命周期由 SDK 和飞机状态统一管理",
+            message = "DJI SDK 生命周期仍由系统管理，已停止本地飞机连接监视器",
         )
     }
 
     override fun getState(): Result<DroneState> = DjiAircraftStateReader.getState()
 
     override suspend fun refreshMissions(): ActionResult {
-        Log.i(TAG, "Refreshing local DJI mission state")
-        return ActionResult(true, DjiWaypointMissionManager.missionState.value.message)
+        Log.i(TAG, "Refreshing local DJI mission and connection state")
+        val snapshot = DjiConnectionManager.refreshFromKeyManager("refresh DJI state")
+        DjiConnectionManager.startConnectionMonitor("refresh DJI state")
+        val missionState = DjiWaypointMissionManager.missionState.value
+        return ActionResult(
+            success = true,
+            message = "DJI 状态已刷新：" +
+                "productConnected=${snapshot.connected}, " +
+                "keyConnectionValue=${snapshot.keyConnectionValue}, " +
+                "productType=${snapshot.productType?.name ?: "无"}, " +
+                "monitorRunning=${snapshot.monitorRunning}, " +
+                "missionState=${missionState.message}",
+        )
     }
 
     override suspend fun uploadMission(
@@ -56,6 +79,10 @@ object DjiDroneController : DroneController {
             TAG,
             "Preparing DJI mission $missionId with ${waypoints.size} waypoint(s), selectedFamily=$selectedDjiAircraftFamily",
         )
+        val connectionError = ensureConnectedForMission("uploadMission")
+        if (connectionError != null) {
+            return connectionError
+        }
         val prepared = DjiWaypointMissionManager.prepareMission(
             waypoints = waypoints,
             selectedAircraftFamily = selectedDjiAircraftFamily,
@@ -63,10 +90,6 @@ object DjiDroneController : DroneController {
         )
         if (!prepared.success) {
             return prepared
-        }
-        val connectionError = ensureConnectedForMission("uploadMission")
-        if (connectionError != null) {
-            return connectionError
         }
         return DjiWaypointMissionManager.uploadMission()
     }
@@ -152,9 +175,20 @@ object DjiDroneController : DroneController {
     }
 
     private fun ensureConnectedForMission(actionName: String): ActionResult? {
-        if (!DjiConnectionManager.isConnected()) {
-            Log.w(TAG, "DJI action $actionName rejected because no product is connected")
-            return ActionResult(false, "当前没有连接 DJI 产品", -1)
+        val snapshot = if (DjiConnectionManager.isConnected()) {
+            DjiConnectionManager.connectionState.value
+        } else {
+            DjiConnectionManager.refreshFromKeyManager("ensureConnectedForMission: $actionName")
+        }
+        if (!snapshot.connected) {
+            DjiConnectionManager.startConnectionMonitor("ensureConnectedForMission: $actionName")
+            Log.w(TAG, "DJI action $actionName rejected because no aircraft is connected")
+            return ActionResult(
+                false,
+                "当前没有连接 DJI 飞机。KeyConnection=${snapshot.keyConnectionValue}, " +
+                    "lastError=${snapshot.lastRefreshError.ifBlank { "无" }}",
+                -1,
+            )
         }
         return null
     }

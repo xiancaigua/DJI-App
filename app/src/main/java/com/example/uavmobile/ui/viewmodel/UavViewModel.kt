@@ -23,6 +23,7 @@ import com.example.uavmobile.debug.DeveloperLogEntry
 import com.example.uavmobile.debug.DeveloperLogStore
 import com.example.uavmobile.debug.DeveloperSnapshot
 import com.example.uavmobile.debug.DjiAircraftDiagnosticSnapshot
+import com.example.uavmobile.debug.DjiConnectionDiagnosticSnapshot
 import com.example.uavmobile.debug.DjiWaypointDiagnosticSnapshot
 import com.example.uavmobile.dji.DjiConnectionManager
 import com.example.uavmobile.dji.DjiDroneController
@@ -66,6 +67,14 @@ data class UavUiState(
     val djiProductId: Int? = null,
     val djiProductTypeLabel: String = "",
     val djiProductStatusMessage: String = DjiConnectionManager.describeStatus(),
+    val djiKeyConnectionValue: Boolean? = null,
+    val djiLastConnectionSource: String = "",
+    val djiLastRefreshReason: String = "",
+    val djiLastRefreshSucceeded: Boolean = false,
+    val djiLastRefreshError: String = "",
+    val djiConnectionMonitorRunning: Boolean = false,
+    val djiConnectionMonitorStartedAt: String = "",
+    val djiConnectionMonitorTickCount: Int = 0,
     val vehicleConnected: Boolean = false,
     val topStatusLabel: String = "飞机离线",
     val topStatusKind: ConnectionStatus = ConnectionStatus.DISCONNECTED,
@@ -144,7 +153,7 @@ internal fun UavUiState.resolveTopVehicleStatus(): TopVehicleStatus {
 
             djiSdkInitState == DjiSdkInitState.FAILED -> TopVehicleStatus(
                 vehicleConnected = false,
-                label = "DJI 异常",
+                label = "DJI 失败",
                 kind = ConnectionStatus.FAILED,
             )
 
@@ -240,6 +249,14 @@ class UavViewModel(
                         djiProductId = connection.productId,
                         djiProductTypeLabel = connection.productType?.name.orEmpty(),
                         djiProductStatusMessage = connection.statusMessage,
+                        djiKeyConnectionValue = connection.keyConnectionValue,
+                        djiLastConnectionSource = connection.lastConnectionSource.name,
+                        djiLastRefreshReason = connection.lastRefreshReason,
+                        djiLastRefreshSucceeded = connection.lastRefreshSucceeded,
+                        djiLastRefreshError = connection.lastRefreshError,
+                        djiConnectionMonitorRunning = connection.monitorRunning,
+                        djiConnectionMonitorStartedAt = connection.monitorStartedAt,
+                        djiConnectionMonitorTickCount = connection.monitorTickCount,
                         connectionStatus = current.resolveActiveConnectionStatus(djiProductConnected = connection.connected),
                     )
                 }
@@ -372,6 +389,10 @@ class UavViewModel(
 
     fun refreshDeveloperSnapshot() {
         DeveloperLogStore.debug(TAG, "正在刷新开发者快照")
+        if (uiState.value.activeBackend == DroneBackend.DJI) {
+            DjiConnectionManager.refreshFromKeyManager("Developer Panel refresh snapshot")
+            DjiConnectionManager.startConnectionMonitor("Developer Panel refresh snapshot")
+        }
         refreshCurrentDroneState(force = true)
         updateState {
             it.copy(
@@ -640,7 +661,17 @@ class UavViewModel(
                 false
             }
 
-            else -> true
+            else -> {
+                if (!state.djiProductConnected) {
+                    pushStatus(
+                        "DJI 当前不可执行 $actionName。SDK registered 不等于飞机已连接；" +
+                            "当前飞机离线，KeyConnection=${state.djiKeyConnectionValue ?: "无"}。",
+                    )
+                    false
+                } else {
+                    true
+                }
+            }
         }
     }
 
@@ -702,6 +733,13 @@ class UavViewModel(
             djiProductId = state.djiProductId,
             djiProductTypeLabel = state.djiProductTypeLabel,
             djiProductStatusMessage = state.djiProductStatusMessage,
+            djiKeyConnectionValue = state.djiKeyConnectionValue,
+            djiLastConnectionSource = state.djiLastConnectionSource,
+            djiLastRefreshReason = state.djiLastRefreshReason,
+            djiLastRefreshSucceeded = state.djiLastRefreshSucceeded,
+            djiLastRefreshError = state.djiLastRefreshError,
+            djiConnectionMonitorRunning = state.djiConnectionMonitorRunning,
+            djiConnectionMonitorTickCount = state.djiConnectionMonitorTickCount,
             djiPermissionsGranted = state.djiPermissionsGranted,
             djiMissingPermissions = state.djiMissingPermissions,
             currentLatitude = state.currentDroneState.latitude,
@@ -743,6 +781,19 @@ class UavViewModel(
                 gpsSignalLevel = state.currentDroneState.gpsSignalLevel,
                 gpsSatelliteCount = state.currentDroneState.gpsSatelliteCount,
                 rtkStatus = state.currentDroneState.rtkStatus,
+            ),
+            djiConnectionDiagnostics = DjiConnectionDiagnosticSnapshot(
+                productConnected = state.djiProductConnected,
+                productType = state.djiProductTypeLabel,
+                keyConnectionValue = state.djiKeyConnectionValue,
+                lastConnectionSource = state.djiLastConnectionSource,
+                lastRefreshReason = state.djiLastRefreshReason,
+                lastRefreshSucceeded = state.djiLastRefreshSucceeded,
+                lastRefreshError = state.djiLastRefreshError,
+                monitorRunning = state.djiConnectionMonitorRunning,
+                monitorStartedAt = state.djiConnectionMonitorStartedAt,
+                monitorTickCount = state.djiConnectionMonitorTickCount,
+                statusMessage = state.djiProductStatusMessage,
             ),
         )
     }

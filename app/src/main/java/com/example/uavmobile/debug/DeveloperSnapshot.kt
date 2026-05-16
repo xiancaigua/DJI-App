@@ -31,6 +31,20 @@ data class DjiAircraftDiagnosticSnapshot(
     val rtkStatus: String = "",
 )
 
+data class DjiConnectionDiagnosticSnapshot(
+    val productConnected: Boolean = false,
+    val productType: String = "",
+    val keyConnectionValue: Boolean? = null,
+    val lastConnectionSource: String = "",
+    val lastRefreshReason: String = "",
+    val lastRefreshSucceeded: Boolean = false,
+    val lastRefreshError: String = "",
+    val monitorRunning: Boolean = false,
+    val monitorStartedAt: String = "",
+    val monitorTickCount: Int = 0,
+    val statusMessage: String = "",
+)
+
 data class DeveloperSnapshot(
     val applicationId: String = "",
     val versionName: String = "",
@@ -50,6 +64,13 @@ data class DeveloperSnapshot(
     val djiProductId: Int? = null,
     val djiProductTypeLabel: String = "",
     val djiProductStatusMessage: String = "",
+    val djiKeyConnectionValue: Boolean? = null,
+    val djiLastConnectionSource: String = "",
+    val djiLastRefreshReason: String = "",
+    val djiLastRefreshSucceeded: Boolean = false,
+    val djiLastRefreshError: String = "",
+    val djiConnectionMonitorRunning: Boolean = false,
+    val djiConnectionMonitorTickCount: Int = 0,
     val djiPermissionsGranted: Boolean = false,
     val djiMissingPermissions: List<String> = emptyList(),
     val currentLatitude: Double? = null,
@@ -65,13 +86,15 @@ data class DeveloperSnapshot(
     val selectedMissionProgress: Float = 0f,
     val djiWaypointDiagnostics: DjiWaypointDiagnosticSnapshot = DjiWaypointDiagnosticSnapshot(),
     val djiAircraftDiagnostics: DjiAircraftDiagnosticSnapshot = DjiAircraftDiagnosticSnapshot(),
+    val djiConnectionDiagnostics: DjiConnectionDiagnosticSnapshot = DjiConnectionDiagnosticSnapshot(),
 ) {
     fun formatSummary(): String {
         return buildString {
             appendLine("诊断阅读说明：")
             appendLine("- 先看应用信息：applicationId 必须和 DJI 平台包名一致。")
             appendLine("- 再看 DJI 状态：sdkInitState 必须到 REGISTERED 才能上传或启动。")
-            appendLine("- 再看 DJI 产品连接和产品类型。")
+            appendLine("- 再看 DJI 连接诊断：SDK registered 不等于飞机已连接，KeyConnection=true 才能作为主动确认。")
+            appendLine("- 如果 callback 没来但 KeyConnection=true，以 KeyConnection 主动刷新结果为准。")
             appendLine("- 然后看 DJI 航点诊断里的 KMZ 路径、大小、机型映射、最后动作和最后错误。")
             appendLine("- 最后看最近日志，确认初始化、准备、上传、启动和失败回调顺序。")
             appendLine()
@@ -98,6 +121,26 @@ data class DeveloperSnapshot(
             appendLine("djiProductId: ${djiProductId ?: "无"}")
             appendLine("djiProductType: ${djiProductTypeLabel.ifBlank { "无" }}")
             appendLine("djiProductStatusMessage: $djiProductStatusMessage")
+            appendLine("djiKeyConnectionValue: ${djiKeyConnectionValue?.toChineseBool() ?: "无"}")
+            appendLine("djiLastConnectionSource: ${djiLastConnectionSource.ifBlank { "无" }}")
+            appendLine("djiLastRefreshReason: ${djiLastRefreshReason.ifBlank { "无" }}")
+            appendLine("djiLastRefreshSucceeded: ${djiLastRefreshSucceeded.toChineseBool()}")
+            appendLine("djiLastRefreshError: ${djiLastRefreshError.ifBlank { "无" }}")
+            appendLine("djiConnectionMonitorRunning: ${djiConnectionMonitorRunning.toChineseBool()}")
+            appendLine("djiConnectionMonitorTickCount: $djiConnectionMonitorTickCount")
+            appendLine()
+            appendLine("DJI Connection Diagnostics：")
+            appendLine("productConnected: ${djiConnectionDiagnostics.productConnected.toChineseBool()}")
+            appendLine("productType: ${djiConnectionDiagnostics.productType.ifBlank { "无" }}")
+            appendLine("keyConnectionValue: ${djiConnectionDiagnostics.keyConnectionValue?.toChineseBool() ?: "无"}")
+            appendLine("lastConnectionSource: ${djiConnectionDiagnostics.lastConnectionSource.ifBlank { "无" }}")
+            appendLine("lastRefreshReason: ${djiConnectionDiagnostics.lastRefreshReason.ifBlank { "无" }}")
+            appendLine("lastRefreshSucceeded: ${djiConnectionDiagnostics.lastRefreshSucceeded.toChineseBool()}")
+            appendLine("lastRefreshError: ${djiConnectionDiagnostics.lastRefreshError.ifBlank { "无" }}")
+            appendLine("monitorRunning: ${djiConnectionDiagnostics.monitorRunning.toChineseBool()}")
+            appendLine("monitorStartedAt: ${djiConnectionDiagnostics.monitorStartedAt.ifBlank { "无" }}")
+            appendLine("monitorTickCount: ${djiConnectionDiagnostics.monitorTickCount}")
+            appendLine("statusMessage: ${djiConnectionDiagnostics.statusMessage.ifBlank { "无" }}")
             appendLine()
             appendLine("DJI 飞机诊断：")
             appendLine("productConnected: ${djiAircraftDiagnostics.productConnected.toChineseBool()}")

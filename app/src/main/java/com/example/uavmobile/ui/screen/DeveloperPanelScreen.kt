@@ -146,6 +146,32 @@ fun DeveloperPanelScreen(
             )
 
             DeveloperSectionCard(
+                title = "DJI Connection Diagnostics",
+                lines = listOf(
+                    "djiProductConnected：${snapshot.djiConnectionDiagnostics.productConnected.toChineseBool()}",
+                    "productType：${snapshot.djiConnectionDiagnostics.productType.ifBlank { "无" }}",
+                    "keyConnectionValue：${snapshot.djiConnectionDiagnostics.keyConnectionValue?.toChineseBool() ?: "无"}",
+                    "lastConnectionSource：${snapshot.djiConnectionDiagnostics.lastConnectionSource.ifBlank { "无" }}",
+                    "lastRefreshReason：${snapshot.djiConnectionDiagnostics.lastRefreshReason.ifBlank { "无" }}",
+                    "lastRefreshSucceeded：${snapshot.djiConnectionDiagnostics.lastRefreshSucceeded.toChineseBool()}",
+                    "lastRefreshError：${snapshot.djiConnectionDiagnostics.lastRefreshError.ifBlank { "无" }}",
+                    "monitorRunning：${snapshot.djiConnectionDiagnostics.monitorRunning.toChineseBool()}",
+                    "monitorStartedAt：${snapshot.djiConnectionDiagnostics.monitorStartedAt.ifBlank { "无" }}",
+                    "monitorTickCount：${snapshot.djiConnectionDiagnostics.monitorTickCount}",
+                    "djiProductStatusMessage：${snapshot.djiConnectionDiagnostics.statusMessage.ifBlank { "无" }}",
+                ),
+            )
+
+            DeveloperSectionCard(
+                title = "DJI 连接判断说明",
+                lines = listOf(
+                    "SDK registered 不等于飞机已连接。",
+                    "如果 callback 没来，但 KeyConnection=true，说明应以 KeyConnection 主动刷新结果为准。",
+                    "如果官方 DJI App 能连接但本 App KeyConnection=false，优先检查官方 App 是否占用连接、当前 App 是否运行在正确设备、包名/App Key 是否正确、权限是否完整、MSDK 是否初始化完成。",
+                ),
+            )
+
+            DeveloperSectionCard(
                 title = "DJI 飞机诊断",
                 lines = listOf(
                     "产品已连接：${if (snapshot.djiAircraftDiagnostics.productConnected) "是" else "否"}",

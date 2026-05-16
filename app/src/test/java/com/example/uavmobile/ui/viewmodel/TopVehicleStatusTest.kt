@@ -72,7 +72,7 @@ class TopVehicleStatusTest {
             djiProductConnected = false,
         ).resolveTopVehicleStatus()
 
-        assertEquals("DJI 异常", status.label)
+        assertEquals("DJI 失败", status.label)
         assertEquals(ConnectionStatus.FAILED, status.kind)
         assertFalse(status.vehicleConnected)
     }
