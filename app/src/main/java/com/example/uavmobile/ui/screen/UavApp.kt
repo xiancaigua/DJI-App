@@ -1,7 +1,6 @@
 package com.example.uavmobile.ui.screen
 
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.ExperimentalFoundationApi
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +25,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -49,7 +49,7 @@ private enum class AppSection(
     EVENTS("Events", Icons.Outlined.Notifications),
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UavApp(
     viewModel: UavViewModel,
@@ -57,6 +57,8 @@ fun UavApp(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var currentSection by rememberSaveable { mutableStateOf(AppSection.CONNECT) }
+    var statusChipTapCount by remember { mutableStateOf(0) }
+    var lastStatusChipTapAt by remember { mutableStateOf(0L) }
 
     if (state.developerPanelVisible) {
         DeveloperPanelScreen(
@@ -66,6 +68,21 @@ fun UavApp(
             onClearLogs = viewModel::clearDeveloperLogs,
         )
         return
+    }
+
+    fun handleStatusChipTap() {
+        val now = SystemClock.elapsedRealtime()
+        statusChipTapCount = if (now - lastStatusChipTapAt <= 1_200L) {
+            statusChipTapCount + 1
+        } else {
+            1
+        }
+        lastStatusChipTapAt = now
+        if (statusChipTapCount >= 3) {
+            statusChipTapCount = 0
+            lastStatusChipTapAt = 0L
+            viewModel.openDeveloperPanel()
+        }
     }
 
     Scaffold(
@@ -88,11 +105,7 @@ fun UavApp(
                 },
                 actions = {
                     AssistChip(
-                        modifier = Modifier.combinedClickable(
-                            onClick = {},
-                            onLongClick = viewModel::openDeveloperPanel,
-                        ),
-                        onClick = {},
+                        onClick = ::handleStatusChipTap,
                         label = {
                             Text(
                                 when (state.connectionStatus) {

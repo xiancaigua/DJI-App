@@ -225,7 +225,7 @@ private fun DjiBackendCard(
 
             if (state.selectedDjiAircraftFamily == DjiAircraftFamily.MATRICE_4_SERIES) {
                 Text(
-                    "Matrice 4 Series is intentionally blocked until the correct WaylineDroneType is confirmed against DJI docs or real hardware.",
+                    "Matrice 4 Series manual mission generation uses WaylineDroneType.WA345. If a Matrice 4D product is connected, the app auto-resolves it to WaylineDroneType.EA230.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

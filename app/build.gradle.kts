@@ -18,9 +18,12 @@ val djiWpmzVersion = "1.0.4.0"
 val composeBomVersion = "2024.09.00"
 val activityComposeVersion = "1.9.2"
 val lifecycleVersion = "2.8.6"
-val appApplicationId = providers.gradleProperty("APP_APPLICATION_ID")
+val requestedAppApplicationId = providers.gradleProperty("APP_APPLICATION_ID")
     .orElse(localProperties.getProperty("APP_APPLICATION_ID") ?: "com.example.uavmobile")
     .get()
+val appApplicationIdPattern = Regex("""^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$""")
+val appApplicationId = requestedAppApplicationId.takeIf { appApplicationIdPattern.matches(it) }
+    ?: "com.example.uavmobile"
 val djiAppKey = providers.gradleProperty("AIRCRAFT_API_KEY")
     .orElse(localProperties.getProperty("AIRCRAFT_API_KEY") ?: "")
     .get()

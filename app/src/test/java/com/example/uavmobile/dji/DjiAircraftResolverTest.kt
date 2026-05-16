@@ -16,11 +16,12 @@ class DjiAircraftResolverTest {
     }
 
     @Test
-    fun `manual matrice 4 series selection returns unsupported aircraft type`() {
+    fun `manual matrice 4 series selection resolves to wa345`() {
         val resolution = DjiAircraftResolver.resolveFromSelection(DjiAircraftFamily.MATRICE_4_SERIES)
 
-        assertTrue(resolution is DjiAircraftResolution.Unsupported)
-        assertTrue(resolution.message.contains("UnsupportedAircraftType"))
+        assertTrue(resolution is DjiAircraftResolution.Supported)
+        resolution as DjiAircraftResolution.Supported
+        assertEquals(DjiWaylineAircraftType.WA345, resolution.resolvedAircraft)
     }
 
     @Test

@@ -65,19 +65,12 @@ fun MissionScreen(
                 }
 
                 DroneBackend.DJI -> {
-                    "This MVP uses a lightweight mission canvas. Upload goes through DJI MSDK and currently supports confirmed M400 wayline generation only."
+                    "This MVP uses a lightweight mission canvas. Upload goes through DJI MSDK and supports M400 plus Matrice 4 Series wayline generation."
                 }
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
-        if (state.activeBackend == DroneBackend.DJI && state.selectedDjiAircraftFamily == DjiAircraftFamily.MATRICE_4_SERIES) {
-            Text(
-                "Matrice 4 Series upload is intentionally blocked until the correct DJI WaylineDroneType is confirmed.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
 
         MissionCanvasCard(state = state)
 
