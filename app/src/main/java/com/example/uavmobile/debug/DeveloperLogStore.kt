@@ -25,6 +25,11 @@ data class DeveloperLogEntry(
 
 object DeveloperLogStore {
     private const val MAX_ENTRIES = 150
+    const val NO_LOGS_RECORDED_YET_MESSAGE =
+        "暂时没有开发日志。请执行初始化 DJI、上传任务、开始任务或刷新快照来生成日志。"
+    const val LOGS_CLEARED_SUCCESSFULLY_MESSAGE =
+        "日志已清空。新的运行事件会显示在这里。"
+    const val NO_LOGS_AVAILABLE_MESSAGE = "当前没有可复制的开发日志。"
 
     private val _entries = MutableStateFlow<List<DeveloperLogEntry>>(emptyList())
     val entries: StateFlow<List<DeveloperLogEntry>> = _entries.asStateFlow()
@@ -58,6 +63,9 @@ object DeveloperLogStore {
     }
 
     fun formatRecentLogs(limit: Int = 100): String {
+        if (entries.value.isEmpty()) {
+            return NO_LOGS_AVAILABLE_MESSAGE
+        }
         return entries.value
             .takeLast(limit)
             .joinToString(separator = "\n") { entry ->

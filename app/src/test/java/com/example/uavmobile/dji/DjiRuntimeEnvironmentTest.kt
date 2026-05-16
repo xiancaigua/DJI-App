@@ -19,7 +19,7 @@ class DjiRuntimeEnvironmentTest {
         )
 
         assertTrue(decision.shouldSkip)
-        assertTrue(decision.reason.orEmpty().contains("virtual device", ignoreCase = true))
+        assertTrue(decision.reason.orEmpty().contains("虚拟设备"))
     }
 
     @Test
@@ -52,6 +52,6 @@ class DjiRuntimeEnvironmentTest {
         )
 
         assertTrue(decision.shouldSkip)
-        assertTrue(decision.reason.orEmpty().contains("disabled", ignoreCase = true))
+        assertTrue(decision.reason.orEmpty().contains("已被配置关闭"))
     }
 }

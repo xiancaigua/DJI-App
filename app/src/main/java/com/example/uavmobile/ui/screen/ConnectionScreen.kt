@@ -48,12 +48,12 @@ fun ConnectionScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
-            text = "Vehicle Backend",
+            text = "连接设置",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "Switch between the self-drone ROS link and the DJI MSDK link. The final app keeps both control paths in one UI.",
+            text = "在这里切换自研 ROS 和 DJI MSDK。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -82,15 +82,15 @@ fun ConnectionScreen(
                 onClick = onConnect,
                 enabled = state.connectionStatus != ConnectionStatus.CONNECTING && !state.busy,
             ) {
-                Text(if (state.activeBackend == DroneBackend.DJI) "Init DJI" else "Connect")
+                Text(if (state.activeBackend == DroneBackend.DJI) "初始化 DJI" else "连接")
             }
 
             OutlinedButton(onClick = onDisconnect, enabled = !state.busy) {
-                Text("Disconnect")
+                Text("断开")
             }
 
             OutlinedButton(onClick = onRefreshMissions, enabled = !state.busy) {
-                Text(if (state.activeBackend == DroneBackend.DJI) "Refresh State" else "Sync Missions")
+                Text(if (state.activeBackend == DroneBackend.DJI) "刷新状态" else "同步任务")
             }
         }
 
@@ -111,12 +111,12 @@ private fun BackendSelector(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Active aircraft backend", fontWeight = FontWeight.SemiBold)
+            Text("飞行后端", fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 FilterChip(
                     selected = activeBackend == DroneBackend.SELF_ROS,
                     onClick = { onBackendSelected(DroneBackend.SELF_ROS) },
-                    label = { Text("Self ROS") },
+                    label = { Text("自研 ROS") },
                 )
                 FilterChip(
                     selected = activeBackend == DroneBackend.DJI,
@@ -142,9 +142,9 @@ private fun RosBackendCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("ROS companion link", fontWeight = FontWeight.SemiBold)
+            Text("ROS 连接", fontWeight = FontWeight.SemiBold)
             Text(
-                "Connect the phone to rosbridge on the companion computer. This backend talks to /mobile/* ROS endpoints.",
+                "连接上位机 rosbridge，调用 /mobile/* 接口。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -152,7 +152,7 @@ private fun RosBackendCard(
                 value = state.connectionConfig.host,
                 onValueChange = onHostChanged,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Host / IP") },
+                label = { Text("主机 / IP") },
                 singleLine = true,
             )
 
@@ -160,7 +160,7 @@ private fun RosBackendCard(
                 value = state.connectionConfig.port,
                 onValueChange = onPortChanged,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Port") },
+                label = { Text("端口") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
             )
@@ -182,18 +182,18 @@ private fun DjiBackendCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("DJI MSDK link", fontWeight = FontWeight.SemiBold)
+            Text("DJI 连接", fontWeight = FontWeight.SemiBold)
             Text(
-                "Initialize DJI MSDK from this final app, then route waypoint upload/control through the connected DJI aircraft.",
+                "在当前 App 内初始化 DJI，并通过已连接飞机执行控制和航点任务。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Text("Target aircraft family", fontWeight = FontWeight.Medium)
+            Text("目标机型", fontWeight = FontWeight.Medium)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 FilterChip(
                     selected = state.selectedDjiAircraftFamily == DjiAircraftFamily.AUTO,
                     onClick = { onSelectedDjiAircraftFamilyChanged(DjiAircraftFamily.AUTO) },
-                    label = { Text("Auto") },
+                    label = { Text("自动") },
                 )
                 FilterChip(
                     selected = state.selectedDjiAircraftFamily == DjiAircraftFamily.M400,
@@ -203,29 +203,29 @@ private fun DjiBackendCard(
                 FilterChip(
                     selected = state.selectedDjiAircraftFamily == DjiAircraftFamily.MATRICE_4_SERIES,
                     onClick = { onSelectedDjiAircraftFamilyChanged(DjiAircraftFamily.MATRICE_4_SERIES) },
-                    label = { Text("Matrice 4") },
+                    label = { Text("御 4 / M4") },
                 )
             }
 
-            Text("Permissions", fontWeight = FontWeight.Medium)
+            Text("权限", fontWeight = FontWeight.Medium)
             Text(state.djiPermissionStatusMessage)
             Text(
-                "Android applicationId: ${BuildConfig.APPLICATION_ID}",
+                "应用 ID：${BuildConfig.APPLICATION_ID}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                "DJI Developer Center Package Name must exactly match the applicationId above.",
+                "DJI 平台包名必须与上面的应用 ID 完全一致。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (!state.djiPermissionsGranted) {
                 Button(onClick = onRequestDjiPermissions) {
-                    Text("Grant DJI Permissions")
+                    Text("授予权限")
                 }
             }
 
             if (state.selectedDjiAircraftFamily == DjiAircraftFamily.MATRICE_4_SERIES) {
                 Text(
-                    "Matrice 4 Series manual mission generation uses WaylineDroneType.WA345. If a Matrice 4D product is connected, the app auto-resolves it to WaylineDroneType.EA230.",
+                    "M4 系列手动任务使用 WA345；如果连接的是 M4D，会自动识别为 EA230。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -243,18 +243,22 @@ private fun StatusCard(state: UavUiState) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Backend status", fontWeight = FontWeight.SemiBold)
+            Text("状态", fontWeight = FontWeight.SemiBold)
+            Text("顶部状态：${state.topStatusLabel}")
+            Text("飞机连接：${if (state.vehicleConnected) "是" else "否"}")
             if (state.activeBackend == DroneBackend.SELF_ROS) {
-                Text("WebSocket URL: ${state.connectionConfig.websocketUrl}")
-                Text("ROS connection: ${state.rosConnectionStatus.name}")
-                Text("Session active: ${if (state.telemetry.sessionActive) "yes" else "no"}")
-                Text("Latest alert: ${state.telemetry.latestAlert.ifBlank { "none" }}")
+                Text("后端链路：${state.rosConnectionStatus.name}")
+                Text("WebSocket：${state.connectionConfig.websocketUrl}")
+                Text("遥测连机：${if (state.telemetry.connected) "是" else "否"}")
+                Text("会话活跃：${if (state.telemetry.sessionActive) "是" else "否"}")
+                Text("最新告警：${state.telemetry.latestAlert.ifBlank { "无" }}")
             } else {
-                Text(state.djiSdkStatusMessage)
-                Text(state.djiProductStatusMessage)
-                Text("Permissions granted: ${if (state.djiPermissionsGranted) "yes" else "no"}")
+                Text("DJI 注册状态：${state.djiSdkInitState.name}")
+                Text("DJI 状态：${state.djiSdkStatusMessage}")
+                Text("飞机状态：${state.djiProductStatusMessage}")
+                Text("权限已授予：${if (state.djiPermissionsGranted) "是" else "否"}")
                 Text(
-                    "MSDK is compiled into the final app. On emulators we only expect init/logging readiness, not real aircraft connectivity.",
+                    "模拟器只验证初始化和日志，不代表真实连机。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

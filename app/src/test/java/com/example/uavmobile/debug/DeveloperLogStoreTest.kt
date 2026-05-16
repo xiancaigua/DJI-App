@@ -30,4 +30,12 @@ class DeveloperLogStoreTest {
 
         assertTrue(DeveloperLogStore.entries.value.isEmpty())
     }
+
+    @Test
+    fun `format recent logs returns placeholder when empty`() {
+        assertEquals(
+            DeveloperLogStore.NO_LOGS_AVAILABLE_MESSAGE,
+            DeveloperLogStore.formatRecentLogs(),
+        )
+    }
 }

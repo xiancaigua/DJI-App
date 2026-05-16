@@ -62,10 +62,10 @@ object DjiWaypointMissionManager {
         missionId: String = "dji_mission_${System.currentTimeMillis()}",
     ): ActionResult {
         if (waypoints.size < 2) {
-            return fail("DJI missions currently require at least 2 waypoints")
+            return fail("DJI 任务当前至少需要 2 个航点")
         }
         if (!DjiMsdkManager.isMissionFeatureAvailable()) {
-            return fail("DJI mission runtime is not ready: ${DjiMsdkManager.describeStatus()}")
+            return fail("DJI 任务运行时未就绪：${DjiMsdkManager.describeStatus()}")
         }
 
         val aircraftResolution = DjiAircraftResolver.resolve(
@@ -75,7 +75,7 @@ object DjiWaypointMissionManager {
         when (aircraftResolution) {
             is DjiAircraftResolution.Supported -> {
                 Log.i(TAG, aircraftResolution.message)
-                DeveloperLogStore.info(TAG, "Aircraft resolution", aircraftResolution.message)
+                DeveloperLogStore.info(TAG, "机型解析结果", aircraftResolution.message)
             }
 
             is DjiAircraftResolution.Missing -> {
@@ -93,10 +93,14 @@ object DjiWaypointMissionManager {
             _missionState.value = MissionExecutionSnapshot(
                 state = MissionExecutionState.PREPARING,
                 missionId = missionId,
+                missionFileName = missionId,
                 waypointCount = waypoints.size,
-                message = "Preparing DJI mission package",
+                message = "正在准备 DJI 任务包",
+                selectedDjiAircraftFamily = selectedAircraftFamily.name,
+                resolvedWaylineDroneType = aircraftResolution.resolvedAircraft.toWaylineDroneType().name,
+                lastDjiWaypointAction = "prepareMission",
             )
-            DeveloperLogStore.info(TAG, "Preparing DJI mission", "missionId=$missionId, waypoints=${waypoints.size}")
+            DeveloperLogStore.info(TAG, "正在准备 DJI 任务", "missionId=$missionId, waypoints=${waypoints.size}")
 
             val appContext = DjiMsdkManager.requireAppContext()
             val missionDir = appContext.getExternalFilesDir("dji-waypoint") ?: appContext.cacheDir
@@ -171,30 +175,41 @@ object DjiWaypointMissionManager {
                 missionId = missionId,
                 missionFileName = missionId,
                 waypointCount = waypoints.size,
-                message = "DJI mission prepared at ${kmzFile.absolutePath}",
+                message = "DJI 任务已准备：${kmzFile.absolutePath}",
+                selectedDjiAircraftFamily = selectedAircraftFamily.name,
+                resolvedWaylineDroneType = aircraftResolution.resolvedAircraft.toWaylineDroneType().name,
+                kmzPath = kmzFile.absolutePath,
+                kmzFileExists = kmzFile.exists(),
+                kmzFileSizeBytes = kmzFile.length(),
+                lastDjiWaypointAction = "prepareMission",
+                lastDjiWaypointActionSuccess = true,
             )
-            DeveloperLogStore.info(TAG, "DJI mission prepared", kmzFile.absolutePath)
+            DeveloperLogStore.info(TAG, "DJI 任务已准备", kmzFile.absolutePath)
 
             ActionResult(
                 success = true,
-                message = "Prepared DJI mission $missionId",
+                message = "已准备 DJI 任务 $missionId",
             )
         }.getOrElse { throwable ->
-            fail(throwable.message ?: "Failed to prepare DJI mission")
+            fail(throwable.message ?: "准备 DJI 任务失败")
         }
     }
 
     suspend fun uploadMission(): ActionResult {
-        val mission = preparedMission ?: return fail("Prepare a DJI mission before uploading")
+        val mission = preparedMission ?: return fail("上传前请先准备 DJI 任务")
         if (!DjiMsdkManager.isMissionFeatureAvailable()) {
-            return fail("DJI mission runtime is not ready: ${DjiMsdkManager.describeStatus()}")
+            return fail("DJI 任务运行时未就绪：${DjiMsdkManager.describeStatus()}")
         }
 
         _missionState.value = _missionState.value.copy(
             state = MissionExecutionState.UPLOADING,
-            message = "Uploading ${mission.missionId} to the aircraft",
+            message = "正在上传 ${mission.missionId}",
+            lastDjiWaypointAction = "pushKMZFileToAircraft",
+            lastDjiWaypointActionSuccess = null,
+            lastDjiWaypointError = "",
+            lastDjiWaypointErrorHint = "",
         )
-        DeveloperLogStore.info(TAG, "Uploading DJI mission", mission.missionId)
+        DeveloperLogStore.info(TAG, "正在上传 DJI 任务", mission.missionId)
 
         return suspendCancellableCoroutine { continuation ->
             SdkWaypointMissionManager.getInstance().pushKMZFileToAircraft(
@@ -204,7 +219,8 @@ object DjiWaypointMissionManager {
                         _missionState.value = _missionState.value.copy(
                             state = MissionExecutionState.UPLOADING,
                             progress = progress,
-                            message = "Uploading ${mission.missionId}: ${(progress * 100).toInt()}%",
+                            message = "正在上传 ${mission.missionId}：${(progress * 100).toInt()}%",
+                            lastDjiWaypointAction = "pushKMZFileToAircraft",
                         )
                     }
 
@@ -212,14 +228,21 @@ object DjiWaypointMissionManager {
                         _missionState.value = _missionState.value.copy(
                             state = MissionExecutionState.UPLOADED,
                             progress = 1.0,
-                            message = "Uploaded ${mission.missionId} to the aircraft",
+                            message = "已上传 ${mission.missionId}",
+                            lastDjiWaypointAction = "pushKMZFileToAircraft",
+                            lastDjiWaypointActionSuccess = true,
                         )
-                        DeveloperLogStore.info(TAG, "DJI mission uploaded", mission.missionId)
-                        continuation.resume(ActionResult(true, "Uploaded DJI mission ${mission.missionId}"))
+                        DeveloperLogStore.info(TAG, "DJI 任务已上传", mission.missionId)
+                        continuation.resume(ActionResult(true, "已上传 DJI 任务 ${mission.missionId}"))
                     }
 
                     override fun onFailure(error: IDJIError) {
-                        continuation.resume(failResult("DJI upload failed: ${DjiErrorFormatter.describe(error)}"))
+                        continuation.resume(
+                            failResult(
+                                message = "DJI 上传失败：${DjiErrorFormatter.describe(error)}",
+                                action = "pushKMZFileToAircraft",
+                            ),
+                        )
                     }
                 },
             )
@@ -227,13 +250,17 @@ object DjiWaypointMissionManager {
     }
 
     suspend fun startMission(): ActionResult {
-        val mission = preparedMission ?: return fail("Prepare a DJI mission before starting")
+        val mission = preparedMission ?: return fail("启动前请先准备 DJI 任务")
         ensureProgressListenerInstalled()
         _missionState.value = _missionState.value.copy(
             state = MissionExecutionState.STARTING,
-            message = "Starting DJI mission ${mission.missionId}",
+            message = "正在启动 DJI 任务 ${mission.missionId}",
+            lastDjiWaypointAction = "startMission",
+            lastDjiWaypointActionSuccess = null,
+            lastDjiWaypointError = "",
+            lastDjiWaypointErrorHint = "",
         )
-        DeveloperLogStore.info(TAG, "Starting DJI mission", mission.missionId)
+        DeveloperLogStore.info(TAG, "正在启动 DJI 任务", mission.missionId)
 
         return suspendCancellableCoroutine { continuation ->
             SdkWaypointMissionManager.getInstance().startMission(
@@ -243,14 +270,21 @@ object DjiWaypointMissionManager {
                     override fun onSuccess() {
                         _missionState.value = _missionState.value.copy(
                             state = MissionExecutionState.RUNNING,
-                            message = "DJI mission ${mission.missionId} started",
+                            message = "DJI 任务 ${mission.missionId} 已启动",
+                            lastDjiWaypointAction = "startMission",
+                            lastDjiWaypointActionSuccess = true,
                         )
-                        DeveloperLogStore.info(TAG, "DJI mission started", mission.missionId)
-                        continuation.resume(ActionResult(true, "Started DJI mission ${mission.missionId}"))
+                        DeveloperLogStore.info(TAG, "DJI 任务已启动", mission.missionId)
+                        continuation.resume(ActionResult(true, "已启动 DJI 任务 ${mission.missionId}"))
                     }
 
                     override fun onFailure(error: IDJIError) {
-                        continuation.resume(failResult("DJI startMission failed: ${DjiErrorFormatter.describe(error)}"))
+                        continuation.resume(
+                            failResult(
+                                message = "DJI startMission 失败：${DjiErrorFormatter.describe(error)}",
+                                action = "startMission",
+                            ),
+                        )
                     }
                 },
             )
@@ -260,35 +294,50 @@ object DjiWaypointMissionManager {
     suspend fun pauseMission(): ActionResult {
         _missionState.value = _missionState.value.copy(
             state = MissionExecutionState.PAUSED,
-            message = "Requesting DJI mission pause",
+            message = "正在请求暂停 DJI 任务",
+            lastDjiWaypointAction = "pauseMission",
+            lastDjiWaypointActionSuccess = null,
+            lastDjiWaypointError = "",
+            lastDjiWaypointErrorHint = "",
         )
-        DeveloperLogStore.info(TAG, "Pausing DJI mission")
+        DeveloperLogStore.info(TAG, "正在暂停 DJI 任务")
 
         return suspendCancellableCoroutine { continuation ->
             SdkWaypointMissionManager.getInstance().pauseMission(object : CommonCallbacks.CompletionCallback {
                 override fun onSuccess() {
                     _missionState.value = _missionState.value.copy(
                         state = MissionExecutionState.PAUSED,
-                        message = "DJI mission paused",
+                        message = "DJI 任务已暂停",
+                        lastDjiWaypointAction = "pauseMission",
+                        lastDjiWaypointActionSuccess = true,
                     )
-                    DeveloperLogStore.info(TAG, "DJI mission paused")
-                    continuation.resume(ActionResult(true, "Paused DJI mission"))
+                    DeveloperLogStore.info(TAG, "DJI 任务已暂停")
+                    continuation.resume(ActionResult(true, "已暂停 DJI 任务"))
                 }
 
                 override fun onFailure(error: IDJIError) {
-                    continuation.resume(failResult("DJI pauseMission failed: ${DjiErrorFormatter.describe(error)}"))
+                    continuation.resume(
+                        failResult(
+                            message = "DJI pauseMission 失败：${DjiErrorFormatter.describe(error)}",
+                            action = "pauseMission",
+                        ),
+                    )
                 }
             })
         }
     }
 
     suspend fun stopMission(): ActionResult {
-        val mission = preparedMission ?: return fail("Prepare a DJI mission before stopping")
+        val mission = preparedMission ?: return fail("停止前请先准备 DJI 任务")
         _missionState.value = _missionState.value.copy(
             state = MissionExecutionState.STOPPING,
-            message = "Stopping DJI mission ${mission.missionId}",
+            message = "正在停止 DJI 任务 ${mission.missionId}",
+            lastDjiWaypointAction = "stopMission",
+            lastDjiWaypointActionSuccess = null,
+            lastDjiWaypointError = "",
+            lastDjiWaypointErrorHint = "",
         )
-        DeveloperLogStore.info(TAG, "Stopping DJI mission", mission.missionId)
+        DeveloperLogStore.info(TAG, "正在停止 DJI 任务", mission.missionId)
 
         return suspendCancellableCoroutine { continuation ->
             SdkWaypointMissionManager.getInstance().stopMission(
@@ -297,14 +346,21 @@ object DjiWaypointMissionManager {
                     override fun onSuccess() {
                         _missionState.value = _missionState.value.copy(
                             state = MissionExecutionState.STOPPED,
-                            message = "DJI mission ${mission.missionId} stopped",
+                            message = "DJI 任务 ${mission.missionId} 已停止",
+                            lastDjiWaypointAction = "stopMission",
+                            lastDjiWaypointActionSuccess = true,
                         )
-                        DeveloperLogStore.info(TAG, "DJI mission stopped", mission.missionId)
-                        continuation.resume(ActionResult(true, "Stopped DJI mission ${mission.missionId}"))
+                        DeveloperLogStore.info(TAG, "DJI 任务已停止", mission.missionId)
+                        continuation.resume(ActionResult(true, "已停止 DJI 任务 ${mission.missionId}"))
                     }
 
                     override fun onFailure(error: IDJIError) {
-                        continuation.resume(failResult("DJI stopMission failed: ${DjiErrorFormatter.describe(error)}"))
+                        continuation.resume(
+                            failResult(
+                                message = "DJI stopMission 失败：${DjiErrorFormatter.describe(error)}",
+                                action = "stopMission",
+                            ),
+                        )
                     }
                 },
             )
@@ -374,23 +430,28 @@ object DjiWaypointMissionManager {
                     .coerceIn(0.0, 1.0)
                 DeveloperLogStore.debug(
                     TAG,
-                    "DJI mission progress",
+                    "DJI 任务进度",
                     "mission=${info.missionFileName}, waypointIndex=${info.currentWaypointIndex}",
                 )
                 _missionState.value = _missionState.value.copy(
                     state = MissionExecutionState.RUNNING,
                     currentWaypointIndex = info.currentWaypointIndex,
                     progress = normalizedProgress,
-                    message = "Executing waypoint ${info.currentWaypointIndex + 1}",
+                    message = "正在执行航点 ${info.currentWaypointIndex + 1}",
+                    lastDjiWaypointAction = "missionProgress",
                 )
             }
 
             override fun onWaylineExecutingInterruptReasonUpdate(error: IDJIError?) {
                 if (error != null) {
-                    DeveloperLogStore.error(TAG, "DJI mission interrupted", DjiErrorFormatter.describe(error))
+                    DeveloperLogStore.error(TAG, "DJI 任务中断", DjiErrorFormatter.describe(error))
                     _missionState.value = _missionState.value.copy(
                         state = MissionExecutionState.FAILED,
-                        message = "Mission interrupted: ${DjiErrorFormatter.describe(error)}",
+                        message = "任务中断：${DjiErrorFormatter.describe(error)}",
+                        lastDjiWaypointAction = "missionInterrupted",
+                        lastDjiWaypointActionSuccess = false,
+                        lastDjiWaypointError = DjiErrorFormatter.describe(error),
+                        lastDjiWaypointErrorHint = buildWaypointErrorHint(DjiErrorFormatter.describe(error)),
                     )
                 }
             }
@@ -402,19 +463,56 @@ object DjiWaypointMissionManager {
         _missionState.value = _missionState.value.copy(
             state = MissionExecutionState.FAILED,
             message = message,
+            lastDjiWaypointAction = "prepareMission",
+            lastDjiWaypointActionSuccess = false,
+            lastDjiWaypointError = message,
+            lastDjiWaypointErrorHint = buildWaypointErrorHint(message),
         )
         Log.e(TAG, message)
         DeveloperLogStore.error(TAG, message)
         return ActionResult(false, message, -1)
     }
 
-    private fun failResult(message: String): ActionResult {
+    private fun failResult(
+        message: String,
+        action: String,
+    ): ActionResult {
         _missionState.value = _missionState.value.copy(
             state = MissionExecutionState.FAILED,
             message = message,
+            lastDjiWaypointAction = action,
+            lastDjiWaypointActionSuccess = false,
+            lastDjiWaypointError = message,
+            lastDjiWaypointErrorHint = buildWaypointErrorHint(message),
         )
         Log.e(TAG, message)
         DeveloperLogStore.error(TAG, message)
         return ActionResult(false, message, -1)
+    }
+
+    private fun buildWaypointErrorHint(message: String): String {
+        val lower = message.lowercase()
+        return when {
+            "validation failed" in lower || "kmz" in lower && "failed" in lower ->
+                "请检查 kmzPath、kmzFileExists、kmzFileSizeBytes、resolvedWaylineDroneType 和航点输入。"
+
+            "registerapp" in lower || "runtime is not ready" in lower ->
+                "请先检查 applicationId、DJI App Key、sdkInitState、网络和 DJI 注册状态。"
+
+            "no dji product connected" in lower || "product connected" in lower ->
+                "请检查遥控器与飞机连接、productConnected、productType 和 USB/RC 链路。"
+
+            "upload" in lower || "pushkmzfiletoaircraft" in lower ->
+                "请检查飞机是否已连接、kmzPath 是否存在，以及 KMZ 是否已成功准备。"
+
+            "startmission" in lower ->
+                "请检查 preparedMissionFileName、上传结果、电机状态、飞行状态、Home 点和产品状态。"
+
+            "pausemission" in lower || "stopmission" in lower ->
+                "请检查 DJI 任务是否正在运行，以及飞机是否仍然连接。"
+
+            else ->
+                "请按顺序检查 DJI 状态、产品连接、航点诊断和最近日志。"
+        }
     }
 }

@@ -15,18 +15,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.uavmobile.core.DroneBackend
 import com.example.uavmobile.core.hasValidCoordinates
 import com.example.uavmobile.core.hasValidHomeCoordinates
-import com.example.uavmobile.core.DroneBackend
 import com.example.uavmobile.ui.viewmodel.UavUiState
 
 @Composable
 fun DashboardScreen(state: UavUiState) {
     val currentAircraft = state.currentDroneState
     val altitudeValue = currentAircraft.altitudeMeters?.let { "%.1f m".format(it) } ?: state.telemetry.altitudeLabel
-    val headingValue = currentAircraft.headingDegrees?.let { "%.1f deg".format(it) } ?: "%.1f deg".format(state.telemetry.headingDeg)
+    val headingValue = currentAircraft.headingDegrees?.let { "%.1f°".format(it) } ?: "%.1f°".format(state.telemetry.headingDeg)
     val missionStatusValue = if (state.activeBackend == DroneBackend.DJI) {
-        state.djiMissionSummary?.status ?: currentAircraft.missionStatus.ifBlank { "IDLE" }
+        state.djiMissionSummary?.status ?: currentAircraft.missionStatus.ifBlank { "空闲" }
     } else {
         state.telemetry.missionStage
     }
@@ -38,26 +38,26 @@ fun DashboardScreen(state: UavUiState) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Flight Dashboard", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("飞行总览", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(title = "Mode", value = state.telemetry.flightMode, modifier = Modifier.weight(1f))
-            MetricCard(title = "Mission", value = missionStatusValue, modifier = Modifier.weight(1f))
+            MetricCard(title = "模式", value = state.telemetry.flightMode, modifier = Modifier.weight(1f))
+            MetricCard(title = "任务", value = missionStatusValue, modifier = Modifier.weight(1f))
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(title = "Battery", value = state.telemetry.batteryPercentLabel, modifier = Modifier.weight(1f))
-            MetricCard(title = "Voltage", value = "%.2f V".format(state.telemetry.batteryVoltage), modifier = Modifier.weight(1f))
+            MetricCard(title = "电量", value = state.telemetry.batteryPercentLabel, modifier = Modifier.weight(1f))
+            MetricCard(title = "电压", value = "%.2f V".format(state.telemetry.batteryVoltage), modifier = Modifier.weight(1f))
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MetricCard(title = "GPS", value = "Fix ${state.telemetry.gpsFixType}", modifier = Modifier.weight(1f))
-            MetricCard(title = "Satellites", value = state.telemetry.satellitesVisible.toString(), modifier = Modifier.weight(1f))
+            MetricCard(title = "卫星", value = state.telemetry.satellitesVisible.toString(), modifier = Modifier.weight(1f))
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(title = "Altitude", value = altitudeValue, modifier = Modifier.weight(1f))
-            MetricCard(title = "Ground Speed", value = state.telemetry.speedLabel, modifier = Modifier.weight(1f))
+            MetricCard(title = "高度", value = altitudeValue, modifier = Modifier.weight(1f))
+            MetricCard(title = "速度", value = state.telemetry.speedLabel, modifier = Modifier.weight(1f))
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -65,9 +65,9 @@ fun DashboardScreen(state: UavUiState) {
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Position", fontWeight = FontWeight.SemiBold)
+                Text("位置", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Aircraft: ${
+                    "飞机：${
                         if (currentAircraft.hasValidCoordinates()) {
                             "%.5f, %.5f".format(currentAircraft.latitude, currentAircraft.longitude)
                         } else {
@@ -76,20 +76,20 @@ fun DashboardScreen(state: UavUiState) {
                     }",
                 )
                 Text(
-                    "Home: ${
+                    "Home 点：${
                         if (currentAircraft.hasValidHomeCoordinates()) {
                             "%.5f, %.5f".format(currentAircraft.homeLatitude, currentAircraft.homeLongitude)
                         } else if (state.telemetry.homeAvailable) {
                             "%.5f, %.5f".format(state.telemetry.homeLatitude, state.telemetry.homeLongitude)
                         } else {
-                            "not available"
+                            "不可用"
                         }
                     }",
                 )
-                Text("Heading: $headingValue")
-                Text("Mission progress: %.0f%%".format(state.telemetry.missionProgress * 100f))
-                Text("Mobile session: ${if (state.telemetry.sessionActive) "healthy" else "stale"}")
-                Text("Backend state: ${currentAircraft.statusMessage.ifBlank { "no extra status" }}")
+                Text("航向：$headingValue")
+                Text("任务进度：%.0f%%".format(state.telemetry.missionProgress * 100f))
+                Text("移动会话：${if (state.telemetry.sessionActive) "正常" else "过期"}")
+                Text("后端状态：${currentAircraft.statusMessage.ifBlank { "无附加状态" }}")
             }
         }
     }

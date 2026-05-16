@@ -9,8 +9,8 @@ data class DjiRuntimeDecision(
 )
 
 object DjiRuntimeEnvironment {
-    private const val VIRTUAL_DEVICE_REASON = "Running on a virtual device, DJI runtime init is skipped"
-    private const val DISABLED_REASON = "DJI runtime disabled by configuration"
+    private const val VIRTUAL_DEVICE_REASON = "当前是虚拟设备，已跳过 DJI 运行时初始化"
+    private const val DISABLED_REASON = "DJI 运行时已被配置关闭"
 
     fun currentDecision(): DjiRuntimeDecision {
         return decide(

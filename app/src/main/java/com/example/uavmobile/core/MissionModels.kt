@@ -39,7 +39,16 @@ data class MissionExecutionSnapshot(
     val waypointCount: Int = 0,
     val currentWaypointIndex: Int = -1,
     val progress: Double = 0.0,
-    val message: String = "No DJI mission prepared",
+    val message: String = "当前还没有准备 DJI 任务",
+    val selectedDjiAircraftFamily: String = "",
+    val resolvedWaylineDroneType: String = "",
+    val kmzPath: String = "",
+    val kmzFileExists: Boolean = false,
+    val kmzFileSizeBytes: Long = 0L,
+    val lastDjiWaypointAction: String = "",
+    val lastDjiWaypointActionSuccess: Boolean? = null,
+    val lastDjiWaypointError: String = "",
+    val lastDjiWaypointErrorHint: String = "",
 )
 
 fun MissionExecutionSnapshot.toMissionSummaryOrNull(): MissionSummary? {
@@ -50,7 +59,23 @@ fun MissionExecutionSnapshot.toMissionSummaryOrNull(): MissionSummary? {
     return MissionSummary(
         missionId = missionId,
         waypointCount = waypointCount,
-        status = state.name,
+        status = state.displayLabel(),
         progress = progress.toFloat().coerceIn(0f, 1f),
     )
+}
+
+fun MissionExecutionState.displayLabel(): String {
+    return when (this) {
+        MissionExecutionState.IDLE -> "空闲"
+        MissionExecutionState.PREPARING -> "准备中"
+        MissionExecutionState.READY_TO_UPLOAD -> "待上传"
+        MissionExecutionState.UPLOADING -> "上传中"
+        MissionExecutionState.UPLOADED -> "已上传"
+        MissionExecutionState.STARTING -> "启动中"
+        MissionExecutionState.RUNNING -> "执行中"
+        MissionExecutionState.PAUSED -> "已暂停"
+        MissionExecutionState.STOPPING -> "停止中"
+        MissionExecutionState.STOPPED -> "已停止"
+        MissionExecutionState.FAILED -> "失败"
+    }
 }

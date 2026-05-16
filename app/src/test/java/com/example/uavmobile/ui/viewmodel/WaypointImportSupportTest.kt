@@ -65,7 +65,7 @@ class WaypointImportSupportTest {
         )
 
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()!!.message!!.contains("ROS telemetry"))
+        assertTrue(result.exceptionOrNull()!!.message!!.contains("ROS 遥测"))
     }
 
     @Test
@@ -75,7 +75,7 @@ class WaypointImportSupportTest {
             currentDroneState = DroneState(
                 backend = DroneBackend.DJI,
                 connectionState = DroneConnectionState.DISCONNECTED,
-                statusMessage = "DJI product not connected",
+                statusMessage = "DJI 产品未连接",
             ),
             existingWaypoints = emptyList(),
         )

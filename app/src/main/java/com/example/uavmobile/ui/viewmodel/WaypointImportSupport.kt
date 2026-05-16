@@ -19,14 +19,14 @@ object WaypointImportSupport {
                 IllegalStateException(
                     when (backend) {
                         DroneBackend.SELF_ROS -> {
-                            "ROS telemetry is not ready yet, no valid aircraft coordinates are available."
+                            "ROS 遥测尚未就绪，当前没有有效飞机坐标。"
                         }
 
                         DroneBackend.DJI -> {
                             currentDroneState?.statusMessage
                                 ?.takeIf { it.isNotBlank() }
-                                ?.let { "DJI current position is unavailable: $it" }
-                                ?: "DJI product is not providing a valid current position yet."
+                                ?.let { "DJI 当前位置不可用：$it" }
+                                ?: "DJI 当前还没有提供有效位置。"
                         }
                     },
                 ),

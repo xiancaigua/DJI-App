@@ -22,6 +22,8 @@ import com.example.uavmobile.data.repository.UavRepository
 import com.example.uavmobile.debug.DeveloperLogEntry
 import com.example.uavmobile.debug.DeveloperLogStore
 import com.example.uavmobile.debug.DeveloperSnapshot
+import com.example.uavmobile.debug.DjiAircraftDiagnosticSnapshot
+import com.example.uavmobile.debug.DjiWaypointDiagnosticSnapshot
 import com.example.uavmobile.dji.DjiConnectionManager
 import com.example.uavmobile.dji.DjiDroneController
 import com.example.uavmobile.dji.DjiMsdkManager
@@ -53,21 +55,107 @@ data class UavUiState(
         MissionWaypointDraft(lat = "31.2312", lon = "121.4753", altM = "35"),
     ),
     val selectedMissionId: String = "",
-    val statusMessage: String = "Ready to connect to rosbridge or initialize DJI MSDK",
+    val statusMessage: String = "准备连接 rosbridge 或初始化 DJI",
     val busy: Boolean = false,
     val djiPermissionsGranted: Boolean = false,
     val djiMissingPermissions: List<String> = emptyList(),
-    val djiPermissionStatusMessage: String = "DJI runtime permissions not checked",
+    val djiPermissionStatusMessage: String = "DJI 权限尚未检查",
     val djiSdkInitState: DjiSdkInitState = DjiMsdkManager.initState.value,
     val djiSdkStatusMessage: String = DjiMsdkManager.describeStatus(),
     val djiProductConnected: Boolean = false,
     val djiProductId: Int? = null,
     val djiProductTypeLabel: String = "",
     val djiProductStatusMessage: String = DjiConnectionManager.describeStatus(),
+    val vehicleConnected: Boolean = false,
+    val topStatusLabel: String = "飞机离线",
+    val topStatusKind: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val developerPanelVisible: Boolean = false,
     val developerLogs: List<DeveloperLogEntry> = emptyList(),
+    val developerPanelStatusMessage: String = "关键操作后先刷新快照，再复制摘要和日志。",
+    val developerLogsStateMessage: String = DeveloperLogStore.NO_LOGS_RECORDED_YET_MESSAGE,
     val developerSnapshot: DeveloperSnapshot = DeveloperSnapshot(),
 )
+
+data class TopVehicleStatus(
+    val vehicleConnected: Boolean,
+    val label: String,
+    val kind: ConnectionStatus,
+)
+
+internal fun UavUiState.resolveTopVehicleStatus(): TopVehicleStatus {
+    return when (activeBackend) {
+        DroneBackend.SELF_ROS -> when {
+            telemetry.connected -> TopVehicleStatus(
+                vehicleConnected = true,
+                label = "飞机已连接",
+                kind = ConnectionStatus.CONNECTED,
+            )
+
+            rosConnectionStatus == ConnectionStatus.CONNECTED -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "ROS 已连通",
+                kind = ConnectionStatus.CONNECTING,
+            )
+
+            rosConnectionStatus == ConnectionStatus.CONNECTING -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "ROS 连接中",
+                kind = ConnectionStatus.CONNECTING,
+            )
+
+            rosConnectionStatus == ConnectionStatus.FAILED -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "ROS 连接失败",
+                kind = ConnectionStatus.FAILED,
+            )
+
+            else -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "飞机离线",
+                kind = ConnectionStatus.DISCONNECTED,
+            )
+        }
+
+        DroneBackend.DJI -> when {
+            djiProductConnected -> TopVehicleStatus(
+                vehicleConnected = true,
+                label = "DJI 飞机已连接",
+                kind = ConnectionStatus.CONNECTED,
+            )
+
+            djiSdkInitState == DjiSdkInitState.REGISTERED -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "DJI 已就绪 · 飞机离线",
+                kind = ConnectionStatus.CONNECTING,
+            )
+
+            djiSdkInitState == DjiSdkInitState.REGISTERING -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "DJI 注册中",
+                kind = ConnectionStatus.CONNECTING,
+            )
+
+            djiSdkInitState == DjiSdkInitState.INITIALIZING ||
+                djiSdkInitState == DjiSdkInitState.READY_TO_REGISTER -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "DJI 初始化中",
+                kind = ConnectionStatus.CONNECTING,
+            )
+
+            djiSdkInitState == DjiSdkInitState.FAILED -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "DJI 异常",
+                kind = ConnectionStatus.FAILED,
+            )
+
+            else -> TopVehicleStatus(
+                vehicleConnected = false,
+                label = "DJI 离线",
+                kind = ConnectionStatus.DISCONNECTED,
+            )
+        }
+    }
+}
 
 class UavViewModel(
     private val repository: UavRepository = UavRepository(),
@@ -80,7 +168,7 @@ class UavViewModel(
     val uiState: StateFlow<UavUiState> = _uiState.asStateFlow()
 
     init {
-        DeveloperLogStore.info(TAG, "UavViewModel initialized")
+        DeveloperLogStore.info(TAG, "ViewModel 已初始化")
 
         viewModelScope.launch {
             repository.connectionStatus.collect { status ->
@@ -173,19 +261,28 @@ class UavViewModel(
 
         viewModelScope.launch {
             DeveloperLogStore.entries.collect { logs ->
-                updateState { it.copy(developerLogs = logs) }
+                updateState { current ->
+                    current.copy(
+                        developerLogs = logs,
+                        developerLogsStateMessage = if (logs.isEmpty()) {
+                            current.developerLogsStateMessage
+                        } else {
+                            "正在显示最近 ${logs.takeLast(80).size} 条日志。"
+                        },
+                    )
+                }
             }
         }
     }
 
     fun onActiveBackendChanged(activeBackend: DroneBackend) {
-        DeveloperLogStore.info(TAG, "Active backend changed", activeBackend.name)
+        DeveloperLogStore.info(TAG, "后端已切换", activeBackend.name)
         updateState { current ->
             current.copy(
                 activeBackend = activeBackend,
                 statusMessage = when (activeBackend) {
-                    DroneBackend.SELF_ROS -> "Switched to self-drone ROS backend"
-                    DroneBackend.DJI -> "Switched to DJI MSDK backend"
+                    DroneBackend.SELF_ROS -> "已切换到自研 ROS 后端"
+                    DroneBackend.DJI -> "已切换到 DJI MSDK 后端"
                 },
             ).withDisplayedMissions()
         }
@@ -193,7 +290,7 @@ class UavViewModel(
     }
 
     fun onSelectedDjiAircraftFamilyChanged(family: DjiAircraftFamily) {
-        DeveloperLogStore.info(TAG, "Selected DJI aircraft family", family.name)
+        DeveloperLogStore.info(TAG, "已选择 DJI 机型", family.name)
         updateState { it.copy(selectedDjiAircraftFamily = family) }
     }
 
@@ -222,7 +319,7 @@ class UavViewModel(
 
     fun connect() {
         val state = uiState.value
-        DeveloperLogStore.info(TAG, "Connect requested", state.activeBackend.name)
+        DeveloperLogStore.info(TAG, "收到连接请求", state.activeBackend.name)
         when (state.activeBackend) {
             DroneBackend.SELF_ROS -> {
                 val error = MissionDraftValidator.validateConnection(state.connectionConfig)
@@ -230,17 +327,17 @@ class UavViewModel(
                     pushStatus(error)
                     return
                 }
-                executeAction("Connecting to ${state.connectionConfig.websocketUrl}") {
+                executeAction("正在连接 ${state.connectionConfig.websocketUrl}") {
                     selfDroneController.connect(state.connectionConfig)
                 }
             }
 
             DroneBackend.DJI -> {
                 if (!state.djiPermissionsGranted) {
-                    pushStatus("Grant DJI permissions before initializing MSDK. ${state.djiPermissionStatusMessage}")
+                    pushStatus("请先授予 DJI 权限。${state.djiPermissionStatusMessage}")
                     return
                 }
-                executeAction("Initializing DJI MSDK") {
+                executeAction("正在初始化 DJI") {
                     djiDroneController.connect(null)
                 }
             }
@@ -249,11 +346,11 @@ class UavViewModel(
 
     fun disconnect() {
         val state = uiState.value
-        DeveloperLogStore.info(TAG, "Disconnect requested", state.activeBackend.name)
+        DeveloperLogStore.info(TAG, "收到断开请求", state.activeBackend.name)
         executeAction(
             pendingMessage = when (state.activeBackend) {
-                DroneBackend.SELF_ROS -> "Disconnecting from rosbridge"
-                DroneBackend.DJI -> "Disconnecting DJI backend"
+                DroneBackend.SELF_ROS -> "正在断开 rosbridge"
+                DroneBackend.DJI -> "正在断开 DJI"
             },
         ) {
             controllerFor(state).disconnect()
@@ -262,11 +359,11 @@ class UavViewModel(
 
     fun refreshMissions() {
         val state = uiState.value
-        DeveloperLogStore.info(TAG, "Refresh mission state requested", state.activeBackend.name)
+        DeveloperLogStore.info(TAG, "收到刷新任务请求", state.activeBackend.name)
         executeAction(
             pendingMessage = when (state.activeBackend) {
-                DroneBackend.SELF_ROS -> "Refreshing ROS missions"
-                DroneBackend.DJI -> "Refreshing DJI mission state"
+                DroneBackend.SELF_ROS -> "正在刷新 ROS 任务"
+                DroneBackend.DJI -> "正在刷新 DJI 任务状态"
             },
         ) {
             controllerFor(state).refreshMissions()
@@ -274,15 +371,25 @@ class UavViewModel(
     }
 
     fun refreshDeveloperSnapshot() {
-        DeveloperLogStore.debug(TAG, "Refreshing developer snapshot")
+        DeveloperLogStore.debug(TAG, "正在刷新开发者快照")
         refreshCurrentDroneState(force = true)
-        updateState { it.copy(statusMessage = "Developer snapshot refreshed") }
+        updateState {
+            it.copy(
+                statusMessage = "诊断快照已刷新",
+                developerPanelStatusMessage = "快照已刷新。先看 DJI 航点诊断，再按需复制摘要。",
+            )
+        }
     }
 
     fun openDeveloperPanel() {
-        DeveloperLogStore.info(TAG, "Developer panel opened")
+        DeveloperLogStore.info(TAG, "开发者面板已打开")
         refreshCurrentDroneState(force = true)
-        updateState { it.copy(developerPanelVisible = true) }
+        updateState {
+            it.copy(
+                developerPanelVisible = true,
+                developerPanelStatusMessage = "开发者面板已打开。关键操作后先刷新快照。",
+            )
+        }
     }
 
     fun closeDeveloperPanel() {
@@ -291,7 +398,34 @@ class UavViewModel(
 
     fun clearDeveloperLogs() {
         DeveloperLogStore.clear()
-        updateState { it.copy(statusMessage = "Developer logs cleared") }
+        updateState {
+            it.copy(
+                statusMessage = "开发日志已清空",
+                developerPanelStatusMessage = DeveloperLogStore.LOGS_CLEARED_SUCCESSFULLY_MESSAGE,
+                developerLogsStateMessage = DeveloperLogStore.LOGS_CLEARED_SUCCESSFULLY_MESSAGE,
+            )
+        }
+    }
+
+    fun onDeveloperSummaryCopied() {
+        updateState {
+            it.copy(
+                developerPanelStatusMessage =
+                    "诊断摘要已复制。需要分析时建议连同最近日志一起发送。",
+            )
+        }
+    }
+
+    fun onDeveloperLogsCopied(hasLogs: Boolean) {
+        updateState {
+            it.copy(
+                developerPanelStatusMessage = if (hasLogs) {
+                    "最近日志已复制，可用于核对初始化、上传、启动和失败回调顺序。"
+                } else {
+                    "当前没有日志可复制，已复制占位提示。"
+                },
+            )
+        }
     }
 
     fun onDraftMissionIdChanged(missionId: String) {
@@ -299,11 +433,11 @@ class UavViewModel(
     }
 
     fun addWaypoint() {
-        DeveloperLogStore.info(TAG, "Add waypoint requested")
+        DeveloperLogStore.info(TAG, "收到新增航点请求")
         updateState { state ->
             state.copy(
                 draftWaypoints = state.draftWaypoints + MissionWaypointDraft(),
-                statusMessage = "Added a new waypoint draft",
+                statusMessage = "已新增一个航点草稿",
             )
         }
     }
@@ -320,30 +454,30 @@ class UavViewModel(
         result.onSuccess { waypoint ->
             DeveloperLogStore.info(
                 TAG,
-                "Imported current aircraft position",
+                "已导入当前位置",
                 "lat=${waypoint.lat}, lon=${waypoint.lon}",
             )
             updateState { current ->
                 current.copy(
                     draftWaypoints = current.draftWaypoints + waypoint,
-                    statusMessage = "Imported current aircraft position into a new waypoint",
+                    statusMessage = "已将当前位置导入为新航点",
                 )
             }
         }.onFailure { throwable ->
             DeveloperLogStore.warn(TAG, "Import current position failed", throwable.message)
-            pushStatus(throwable.message ?: "Current aircraft position is not available")
+            pushStatus(throwable.message ?: "当前没有可用位置")
         }
     }
 
     fun removeWaypoint(index: Int) {
         updateState { state ->
             if (state.draftWaypoints.size <= 1) {
-                state.copy(statusMessage = "At least one waypoint is required")
+                state.copy(statusMessage = "至少保留一个航点")
             } else {
                 DeveloperLogStore.info(TAG, "Removed waypoint", "index=${index + 1}")
                 state.copy(
                     draftWaypoints = state.draftWaypoints.filterIndexed { waypointIndex, _ -> waypointIndex != index },
-                    statusMessage = "Removed waypoint ${index + 1}",
+                    statusMessage = "已删除航点 ${index + 1}",
                 )
             }
         }
@@ -362,21 +496,21 @@ class UavViewModel(
     fun uploadDraftMission() {
         val state = uiState.value
         if (state.draftMissionId.isBlank()) {
-            pushStatus("Mission ID is required")
+            pushStatus("任务 ID 不能为空")
             return
         }
-        if (state.activeBackend == DroneBackend.DJI && !ensureDjiReady("upload a DJI mission")) {
+        if (state.activeBackend == DroneBackend.DJI && !ensureDjiReady("上传 DJI 任务")) {
             return
         }
 
         val parsed = MissionDraftValidator.parseMissionWaypoints(state.draftWaypoints)
         if (parsed.isFailure) {
-            pushStatus(parsed.exceptionOrNull()?.message ?: "Invalid waypoint list")
+            pushStatus(parsed.exceptionOrNull()?.message ?: "航点列表无效")
             return
         }
 
-        DeveloperLogStore.info(TAG, "Upload mission requested", state.draftMissionId)
-        executeAction("Uploading ${state.draftMissionId}") {
+        DeveloperLogStore.info(TAG, "收到上传任务请求", state.draftMissionId)
+        executeAction("正在上传 ${state.draftMissionId}") {
             controllerFor(state).uploadMission(
                 missionId = state.draftMissionId,
                 waypoints = parsed.getOrThrow(),
@@ -390,40 +524,40 @@ class UavViewModel(
     }
 
     fun startMission() = executeMissionAction(
-        actionLabel = "Starting mission",
-        djiReadinessAction = "start a DJI mission",
+        actionLabel = "正在开始任务",
+        djiReadinessAction = "开始 DJI 任务",
     ) { controller, missionId ->
         controller.startMission(missionId)
     }
 
     fun pauseMission() = executeMissionAction(
-        actionLabel = "Pausing mission",
-        djiReadinessAction = "pause a DJI mission",
+        actionLabel = "正在暂停任务",
+        djiReadinessAction = "暂停 DJI 任务",
     ) { controller, missionId ->
         controller.pauseMission(missionId)
     }
 
-    fun resumeMission() = executeMissionAction(actionLabel = "Resuming mission") { controller, missionId ->
+    fun resumeMission() = executeMissionAction(actionLabel = "正在继续任务") { controller, missionId ->
         controller.resumeMission(missionId)
     }
 
     fun stopMission() = executeMissionAction(
-        actionLabel = "Stopping mission",
-        djiReadinessAction = "stop a DJI mission",
+        actionLabel = "正在停止任务",
+        djiReadinessAction = "停止 DJI 任务",
     ) { controller, missionId ->
         controller.stopMission(missionId)
     }
 
     fun rtl() = executeMissionAction(
-        actionLabel = "Requesting RTL",
-        djiReadinessAction = "request DJI return-to-home",
+        actionLabel = "正在请求返航",
+        djiReadinessAction = "请求 DJI 返航",
     ) { controller, missionId ->
         controller.returnHome(missionId)
     }
 
     fun land() = executeMissionAction(
-        actionLabel = "Requesting landing",
-        djiReadinessAction = "request DJI landing",
+        actionLabel = "正在请求降落",
+        djiReadinessAction = "请求 DJI 降落",
     ) { controller, missionId ->
         controller.land(missionId)
     }
@@ -438,7 +572,7 @@ class UavViewModel(
         val missionId = state.selectedMissionId.takeIf { it.isNotBlank() }
 
         if (state.activeBackend == DroneBackend.SELF_ROS && missionId == null) {
-            pushStatus("Select a mission first")
+            pushStatus("请先选择任务")
             return
         }
 
@@ -462,24 +596,24 @@ class UavViewModel(
             val result = try {
                 block()
             } catch (exception: Exception) {
-                Log.e(TAG, "Client action failed: ${exception.message}", exception)
-                DeveloperLogStore.error(TAG, "Client action failed", exception.message)
+                Log.e(TAG, "客户端操作失败: ${exception.message}", exception)
+                DeveloperLogStore.error(TAG, "客户端操作失败", exception.message)
                 ActionResult(
                     success = false,
                     errorCode = -1,
-                    message = exception.message ?: "Unknown client error",
+                    message = exception.message ?: "未知客户端错误",
                 )
             }
 
             DeveloperLogStore.info(
                 TAG,
-                if (result.success) "Action completed" else "Action failed",
+                if (result.success) "操作完成" else "操作失败",
                 result.message,
             )
             updateState {
                 it.copy(
                     busy = false,
-                    statusMessage = if (result.success) result.message else "Error ${result.errorCode}: ${result.message}",
+                    statusMessage = if (result.success) result.message else "错误 ${result.errorCode}: ${result.message}",
                 )
             }
         }
@@ -495,14 +629,14 @@ class UavViewModel(
     private fun ensureDjiReady(actionName: String): Boolean {
         val state = uiState.value
         if (!state.djiPermissionsGranted) {
-            pushStatus("Grant DJI permissions before you $actionName. ${state.djiPermissionStatusMessage}")
+            pushStatus("执行前请先授予 DJI 权限。${state.djiPermissionStatusMessage}")
             return false
         }
         return when (state.djiSdkInitState) {
             DjiSdkInitState.SKIPPED,
             DjiSdkInitState.FAILED,
             -> {
-                pushStatus("DJI backend is not ready to $actionName. ${state.djiSdkStatusMessage}")
+                pushStatus("DJI 当前不可执行 $actionName。${state.djiSdkStatusMessage}")
                 false
             }
 
@@ -511,7 +645,7 @@ class UavViewModel(
     }
 
     private fun pushStatus(message: String) {
-        DeveloperLogStore.warn(TAG, "Status update", message)
+        DeveloperLogStore.warn(TAG, "状态更新", message)
         updateState { it.copy(statusMessage = message) }
     }
 
@@ -521,7 +655,7 @@ class UavViewModel(
         val snapshot = result.getOrElse { throwable ->
             DroneState(
                 backend = state.activeBackend,
-                statusMessage = throwable.message ?: "Unable to read current aircraft state",
+                statusMessage = throwable.message ?: "无法读取当前飞机状态",
             )
         }
         if (force || snapshot != state.currentDroneState) {
@@ -536,8 +670,14 @@ class UavViewModel(
     }
 
     private fun syncDerivedState(state: UavUiState): UavUiState {
-        return state.copy(
-            developerSnapshot = buildDeveloperSnapshot(state),
+        val topStatus = state.resolveTopVehicleStatus()
+        val syncedState = state.copy(
+            vehicleConnected = topStatus.vehicleConnected,
+            topStatusLabel = topStatus.label,
+            topStatusKind = topStatus.kind,
+        )
+        return syncedState.copy(
+            developerSnapshot = buildDeveloperSnapshot(syncedState),
         )
     }
 
@@ -546,8 +686,11 @@ class UavViewModel(
         return DeveloperSnapshot(
             applicationId = BuildConfig.APPLICATION_ID,
             versionName = BuildConfig.VERSION_NAME,
-            activeBackendLabel = state.activeBackend.name,
-            selectedDjiAircraftFamilyLabel = state.selectedDjiAircraftFamily.name,
+            activeBackendLabel = state.activeBackend.displayLabel(),
+            selectedDjiAircraftFamilyLabel = state.selectedDjiAircraftFamily.displayLabel(),
+            topStatusLabel = state.topStatusLabel,
+            topStatusKind = state.topStatusKind.name,
+            vehicleConnected = state.vehicleConnected,
             rosWebsocketUrl = state.connectionConfig.websocketUrl,
             rosConnectionStatus = state.rosConnectionStatus.name,
             rosSessionActive = state.telemetry.sessionActive,
@@ -572,6 +715,35 @@ class UavViewModel(
             displayedMissionCount = state.missions.size,
             selectedMissionStatus = selectedMission?.status.orEmpty(),
             selectedMissionProgress = selectedMission?.progress ?: 0f,
+            djiWaypointDiagnostics = DjiWaypointDiagnosticSnapshot(
+                preparedMissionId = DjiWaypointMissionManager.missionState.value.missionId,
+                preparedMissionFileName = DjiWaypointMissionManager.missionState.value.missionFileName,
+                kmzPath = DjiWaypointMissionManager.missionState.value.kmzPath,
+                kmzFileExists = DjiWaypointMissionManager.missionState.value.kmzFileExists,
+                kmzFileSizeBytes = DjiWaypointMissionManager.missionState.value.kmzFileSizeBytes,
+                selectedDjiAircraftFamily = DjiWaypointMissionManager.missionState.value.selectedDjiAircraftFamily,
+                resolvedWaylineDroneType = DjiWaypointMissionManager.missionState.value.resolvedWaylineDroneType,
+                lastDjiWaypointAction = DjiWaypointMissionManager.missionState.value.lastDjiWaypointAction,
+                lastDjiWaypointActionSuccess = DjiWaypointMissionManager.missionState.value.lastDjiWaypointActionSuccess,
+                lastDjiWaypointError = DjiWaypointMissionManager.missionState.value.lastDjiWaypointError,
+                lastDjiWaypointErrorHint = DjiWaypointMissionManager.missionState.value.lastDjiWaypointErrorHint,
+                missionExecutionState = DjiWaypointMissionManager.missionState.value.state.name,
+                currentWaypointIndex = DjiWaypointMissionManager.missionState.value.currentWaypointIndex,
+                missionProgress = DjiWaypointMissionManager.missionState.value.progress,
+            ),
+            djiAircraftDiagnostics = DjiAircraftDiagnosticSnapshot(
+                productConnected = state.djiProductConnected,
+                productType = state.djiProductTypeLabel,
+                flightMode = state.currentDroneState.flightMode,
+                motorsOn = state.currentDroneState.motorsOn,
+                isFlying = state.currentDroneState.isFlying,
+                isOnGround = state.currentDroneState.isOnGround,
+                homeLatitude = state.currentDroneState.homeLatitude,
+                homeLongitude = state.currentDroneState.homeLongitude,
+                gpsSignalLevel = state.currentDroneState.gpsSignalLevel,
+                gpsSatelliteCount = state.currentDroneState.gpsSatelliteCount,
+                rtkStatus = state.currentDroneState.rtkStatus,
+            ),
         )
     }
 
@@ -619,5 +791,20 @@ class UavViewModel(
 
     companion object {
         private const val TAG = "UavViewModel"
+    }
+}
+
+private fun DroneBackend.displayLabel(): String {
+    return when (this) {
+        DroneBackend.SELF_ROS -> "自研 ROS"
+        DroneBackend.DJI -> "DJI MSDK"
+    }
+}
+
+private fun DjiAircraftFamily.displayLabel(): String {
+    return when (this) {
+        DjiAircraftFamily.AUTO -> "自动"
+        DjiAircraftFamily.M400 -> "M400"
+        DjiAircraftFamily.MATRICE_4_SERIES -> "御 4 / M4"
     }
 }

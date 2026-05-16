@@ -15,9 +15,9 @@ data class DjiPermissionSnapshot(
 
     val statusMessage: String
         get() = if (allGranted) {
-            "DJI runtime permissions granted"
+            "DJI 权限已授予"
         } else {
-            "Missing DJI permissions: ${missingPermissions.joinToString()}"
+            "缺少 DJI 权限：${missingPermissions.joinToString()}"
         }
 }
 

@@ -1,10 +1,44 @@
 package com.example.uavmobile.debug
 
+data class DjiWaypointDiagnosticSnapshot(
+    val preparedMissionId: String = "",
+    val preparedMissionFileName: String = "",
+    val kmzPath: String = "",
+    val kmzFileExists: Boolean = false,
+    val kmzFileSizeBytes: Long = 0L,
+    val selectedDjiAircraftFamily: String = "",
+    val resolvedWaylineDroneType: String = "",
+    val lastDjiWaypointAction: String = "",
+    val lastDjiWaypointActionSuccess: Boolean? = null,
+    val lastDjiWaypointError: String = "",
+    val lastDjiWaypointErrorHint: String = "",
+    val missionExecutionState: String = "",
+    val currentWaypointIndex: Int = -1,
+    val missionProgress: Double = 0.0,
+)
+
+data class DjiAircraftDiagnosticSnapshot(
+    val productConnected: Boolean = false,
+    val productType: String = "",
+    val flightMode: String = "",
+    val motorsOn: Boolean? = null,
+    val isFlying: Boolean? = null,
+    val isOnGround: Boolean? = null,
+    val homeLatitude: Double? = null,
+    val homeLongitude: Double? = null,
+    val gpsSignalLevel: String = "",
+    val gpsSatelliteCount: Int? = null,
+    val rtkStatus: String = "",
+)
+
 data class DeveloperSnapshot(
     val applicationId: String = "",
     val versionName: String = "",
     val activeBackendLabel: String = "",
     val selectedDjiAircraftFamilyLabel: String = "",
+    val topStatusLabel: String = "",
+    val topStatusKind: String = "",
+    val vehicleConnected: Boolean = false,
     val rosWebsocketUrl: String = "",
     val rosConnectionStatus: String = "",
     val rosSessionActive: Boolean = false,
@@ -29,37 +63,89 @@ data class DeveloperSnapshot(
     val displayedMissionCount: Int = 0,
     val selectedMissionStatus: String = "",
     val selectedMissionProgress: Float = 0f,
+    val djiWaypointDiagnostics: DjiWaypointDiagnosticSnapshot = DjiWaypointDiagnosticSnapshot(),
+    val djiAircraftDiagnostics: DjiAircraftDiagnosticSnapshot = DjiAircraftDiagnosticSnapshot(),
 ) {
     fun formatSummary(): String {
         return buildString {
+            appendLine("诊断阅读说明：")
+            appendLine("- 先看应用信息：applicationId 必须和 DJI 平台包名一致。")
+            appendLine("- 再看 DJI 状态：sdkInitState 必须到 REGISTERED 才能上传或启动。")
+            appendLine("- 再看 DJI 产品连接和产品类型。")
+            appendLine("- 然后看 DJI 航点诊断里的 KMZ 路径、大小、机型映射、最后动作和最后错误。")
+            appendLine("- 最后看最近日志，确认初始化、准备、上传、启动和失败回调顺序。")
+            appendLine()
+            appendLine("应用信息：")
             appendLine("applicationId: $applicationId")
             appendLine("versionName: $versionName")
             appendLine("activeBackend: $activeBackendLabel")
             appendLine("selectedDjiAircraftFamily: $selectedDjiAircraftFamilyLabel")
+            appendLine("topStatusLabel: ${topStatusLabel.ifBlank { "无" }}")
+            appendLine("topStatusKind: ${topStatusKind.ifBlank { "无" }}")
+            appendLine("vehicleConnected: ${vehicleConnected.toChineseBool()}")
+            appendLine()
+            appendLine("ROS 状态：")
             appendLine("rosWebsocketUrl: $rosWebsocketUrl")
             appendLine("rosConnectionStatus: $rosConnectionStatus")
-            appendLine("rosSessionActive: $rosSessionActive")
+            appendLine("rosSessionActive: ${rosSessionActive.toChineseBool()}")
             appendLine("rosMissionCacheCount: $rosMissionCacheCount")
-            appendLine("rosLatestAlert: ${rosLatestAlert.ifBlank { "none" }}")
+            appendLine("rosLatestAlert: ${rosLatestAlert.ifBlank { "无" }}")
+            appendLine()
+            appendLine("DJI 状态：")
             appendLine("djiSdkInitState: $djiSdkInitState")
             appendLine("djiSdkStatusMessage: $djiSdkStatusMessage")
-            appendLine("djiProductConnected: $djiProductConnected")
-            appendLine("djiProductId: ${djiProductId ?: "n/a"}")
-            appendLine("djiProductType: ${djiProductTypeLabel.ifBlank { "n/a" }}")
+            appendLine("djiProductConnected: ${djiProductConnected.toChineseBool()}")
+            appendLine("djiProductId: ${djiProductId ?: "无"}")
+            appendLine("djiProductType: ${djiProductTypeLabel.ifBlank { "无" }}")
             appendLine("djiProductStatusMessage: $djiProductStatusMessage")
-            appendLine("djiPermissionsGranted: $djiPermissionsGranted")
-            appendLine("djiMissingPermissions: ${if (djiMissingPermissions.isEmpty()) "none" else djiMissingPermissions.joinToString()}")
-            appendLine("currentLatitude: ${currentLatitude?.let { "%.6f".format(it) } ?: "n/a"}")
-            appendLine("currentLongitude: ${currentLongitude?.let { "%.6f".format(it) } ?: "n/a"}")
-            appendLine("currentAltitudeMeters: ${currentAltitudeMeters?.let { "%.2f".format(it) } ?: "n/a"}")
-            appendLine("currentHeadingDegrees: ${currentHeadingDegrees?.let { "%.1f".format(it) } ?: "n/a"}")
-            appendLine("currentHomeLatitude: ${currentHomeLatitude?.let { "%.6f".format(it) } ?: "n/a"}")
-            appendLine("currentHomeLongitude: ${currentHomeLongitude?.let { "%.6f".format(it) } ?: "n/a"}")
-            appendLine("currentStateMessage: ${currentStateMessage.ifBlank { "none" }}")
-            appendLine("selectedMissionId: ${selectedMissionId.ifBlank { "none" }}")
+            appendLine()
+            appendLine("DJI 飞机诊断：")
+            appendLine("productConnected: ${djiAircraftDiagnostics.productConnected.toChineseBool()}")
+            appendLine("productType: ${djiAircraftDiagnostics.productType.ifBlank { "无" }}")
+            appendLine("flightMode: ${djiAircraftDiagnostics.flightMode.ifBlank { "无" }}")
+            appendLine("motorsOn: ${djiAircraftDiagnostics.motorsOn?.toChineseBool() ?: "无"}")
+            appendLine("isFlying: ${djiAircraftDiagnostics.isFlying?.toChineseBool() ?: "无"}")
+            appendLine("isOnGround: ${djiAircraftDiagnostics.isOnGround?.toChineseBool() ?: "无"}")
+            appendLine("homeLatitude: ${djiAircraftDiagnostics.homeLatitude?.let { "%.6f".format(it) } ?: "无"}")
+            appendLine("homeLongitude: ${djiAircraftDiagnostics.homeLongitude?.let { "%.6f".format(it) } ?: "无"}")
+            appendLine("gpsSignalLevel: ${djiAircraftDiagnostics.gpsSignalLevel.ifBlank { "无" }}")
+            appendLine("gpsSatelliteCount: ${djiAircraftDiagnostics.gpsSatelliteCount?.toString() ?: "无"}")
+            appendLine("rtkStatus: ${djiAircraftDiagnostics.rtkStatus.ifBlank { "无" }}")
+            appendLine()
+            appendLine("位置与 Home：")
+            appendLine("djiPermissionsGranted: ${djiPermissionsGranted.toChineseBool()}")
+            appendLine("djiMissingPermissions: ${if (djiMissingPermissions.isEmpty()) "无" else djiMissingPermissions.joinToString()}")
+            appendLine("currentLatitude: ${currentLatitude?.let { "%.6f".format(it) } ?: "无"}")
+            appendLine("currentLongitude: ${currentLongitude?.let { "%.6f".format(it) } ?: "无"}")
+            appendLine("currentAltitudeMeters: ${currentAltitudeMeters?.let { "%.2f".format(it) } ?: "无"}")
+            appendLine("currentHeadingDegrees: ${currentHeadingDegrees?.let { "%.1f".format(it) } ?: "无"}")
+            appendLine("currentHomeLatitude: ${currentHomeLatitude?.let { "%.6f".format(it) } ?: "无"}")
+            appendLine("currentHomeLongitude: ${currentHomeLongitude?.let { "%.6f".format(it) } ?: "无"}")
+            appendLine("currentStateMessage: ${currentStateMessage.ifBlank { "无" }}")
+            appendLine()
+            appendLine("DJI 航点诊断：")
+            appendLine("preparedMissionId: ${djiWaypointDiagnostics.preparedMissionId.ifBlank { "无" }}")
+            appendLine("preparedMissionFileName: ${djiWaypointDiagnostics.preparedMissionFileName.ifBlank { "无" }}")
+            appendLine("kmzPath: ${djiWaypointDiagnostics.kmzPath.ifBlank { "无" }}")
+            appendLine("kmzFileExists: ${djiWaypointDiagnostics.kmzFileExists.toChineseBool()}")
+            appendLine("kmzFileSizeBytes: ${djiWaypointDiagnostics.kmzFileSizeBytes}")
+            appendLine("selectedDjiAircraftFamily: ${djiWaypointDiagnostics.selectedDjiAircraftFamily.ifBlank { "无" }}")
+            appendLine("resolvedWaylineDroneType: ${djiWaypointDiagnostics.resolvedWaylineDroneType.ifBlank { "无" }}")
+            appendLine("lastDjiWaypointAction: ${djiWaypointDiagnostics.lastDjiWaypointAction.ifBlank { "无" }}")
+            appendLine("lastDjiWaypointActionSuccess: ${djiWaypointDiagnostics.lastDjiWaypointActionSuccess?.toChineseBool() ?: "无"}")
+            appendLine("lastDjiWaypointError: ${djiWaypointDiagnostics.lastDjiWaypointError.ifBlank { "无" }}")
+            appendLine("lastDjiWaypointErrorHint: ${djiWaypointDiagnostics.lastDjiWaypointErrorHint.ifBlank { "无" }}")
+            appendLine("missionExecutionState: ${djiWaypointDiagnostics.missionExecutionState.ifBlank { "无" }}")
+            appendLine("currentWaypointIndex: ${djiWaypointDiagnostics.currentWaypointIndex}")
+            appendLine("missionProgress: ${"%.0f".format(djiWaypointDiagnostics.missionProgress * 100.0)}%")
+            appendLine()
+            appendLine("任务选择：")
+            appendLine("selectedMissionId: ${selectedMissionId.ifBlank { "无" }}")
             appendLine("displayedMissionCount: $displayedMissionCount")
-            appendLine("selectedMissionStatus: ${selectedMissionStatus.ifBlank { "none" }}")
+            appendLine("selectedMissionStatus: ${selectedMissionStatus.ifBlank { "无" }}")
             appendLine("selectedMissionProgress: ${"%.0f".format(selectedMissionProgress * 100f)}%")
         }
     }
 }
+
+private fun Boolean.toChineseBool(): String = if (this) "是" else "否"

@@ -40,6 +40,13 @@ Android app responsibilities:
   - read DJI connection/state
   - build/upload/start waypoint missions
 
+Authoritative DJI reference for this repo:
+
+- `D:\ROS2Android\android-app\DJI-App\agents\MSDKDOCS\Docs\Android_API\cn\index.html`
+- `D:\ROS2Android\android-app\DJI-App\agents\MSDKDOCS\Docs\Android_API\en\index.html`
+
+For DJI-facing work, agents must consult these local MSDK docs first. Do not invent DJI API usage from memory.
+
 Control routing is unified in the Android app through `DroneController`:
 
 - `SelfDroneController` for ROS
@@ -54,6 +61,8 @@ The UI must not call DJI SDK details directly.
 - Inject DJI App Key through Gradle properties and manifest placeholders, not Kotlin source.
 - Keep arm64-focused DJI packaging for real DJI hardware; emulator support is only for compile/startup validation.
 - Developer diagnostics exist inside the app and should be extended there instead of scattering ad hoc debug UI.
+- After every code change, update `agents` memory with the change purpose, implementation details, verification result, and any new debug rules.
+- Top-right app status is reserved for actual aircraft/product connection. Backend links, ROS bridge connectivity, permissions, DJI SDK init, and DJI registration must not be labeled as connected.
 
 ## 5. Current identity
 
@@ -83,6 +92,7 @@ If DJI registration fails again:
 1. verify which package is actually installed and launched
 2. verify `local.properties`
 3. verify DJI Developer Center package name matches the runtime package exactly
+4. if the failure touches SDK init/register behavior, check the local MSDK docs for `SDKManager`, `ISDKManager`, and callback expectations
 
 ## 7. References
 

@@ -10,27 +10,27 @@ object DjiConnectedAircraftResolver {
                 requestedFamily = DjiAircraftFamily.M400,
                 resolvedProductTypeName = productType.name,
                 resolvedAircraft = DjiWaylineAircraftType.PM440,
-                message = "Resolved DJI_MATRICE_400 to WaylineDroneType.PM440",
+                message = "已将 DJI_MATRICE_400 解析为 WaylineDroneType.PM440",
             )
 
             ProductType.DJI_MATRICE_4_SERIES -> DjiAircraftResolution.Supported(
                 requestedFamily = DjiAircraftFamily.MATRICE_4_SERIES,
                 resolvedProductTypeName = productType.name,
                 resolvedAircraft = DjiWaylineAircraftType.WA345,
-                message = "Resolved DJI_MATRICE_4_SERIES to WaylineDroneType.WA345",
+                message = "已将 DJI_MATRICE_4_SERIES 解析为 WaylineDroneType.WA345",
             )
 
             ProductType.DJI_MATRICE_4D_SERIES -> DjiAircraftResolution.Supported(
                 requestedFamily = DjiAircraftFamily.MATRICE_4_SERIES,
                 resolvedProductTypeName = productType.name,
                 resolvedAircraft = DjiWaylineAircraftType.EA230,
-                message = "Resolved DJI_MATRICE_4D_SERIES to WaylineDroneType.EA230",
+                message = "已将 DJI_MATRICE_4D_SERIES 解析为 WaylineDroneType.EA230",
             )
 
             else -> DjiAircraftResolution.Unsupported(
                 requestedFamily = DjiAircraftFamily.AUTO,
                 resolvedProductTypeName = productType.name,
-                message = "UnsupportedAircraftType: connected DJI product $productType is not enabled for waypoint generation in this app yet.",
+                message = "当前连接的 DJI 产品 $productType 暂未在本应用中启用航点生成。",
             )
         }
     }

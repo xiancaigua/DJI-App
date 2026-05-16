@@ -13,7 +13,7 @@ data class DjiConnectionSnapshot(
     val connected: Boolean = false,
     val productId: Int? = null,
     val productType: ProductType? = null,
-    val statusMessage: String = "DJI product not connected",
+    val statusMessage: String = "DJI 产品未连接",
 )
 
 object DjiConnectionManager {
@@ -54,9 +54,16 @@ object DjiConnectionManager {
             productId = productId,
             productType = productType,
             statusMessage = buildString {
-                append("DJI product $eventLabel")
+                append(
+                    when (eventLabel) {
+                        "connected" -> "DJI 产品已连接"
+                        "disconnected" -> "DJI 产品已断开"
+                        "changed" -> "DJI 产品已变化"
+                        else -> "DJI 产品状态更新"
+                    },
+                )
                 productId?.let { append(" (productId=$it)") }
-                productType?.let { append(", productType=$it") }
+                productType?.let { append("，productType=$it") }
             },
         )
         if (connected) {

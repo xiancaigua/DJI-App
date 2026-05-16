@@ -24,6 +24,13 @@ data class DroneState(
     val homeLongitude: Double? = null,
     val altitudeMeters: Double? = null,
     val headingDegrees: Float? = null,
+    val flightMode: String = "",
+    val motorsOn: Boolean? = null,
+    val isFlying: Boolean? = null,
+    val isOnGround: Boolean? = null,
+    val gpsSignalLevel: String = "",
+    val gpsSatelliteCount: Int? = null,
+    val rtkStatus: String = "",
     val missionStatus: String = "",
     val statusMessage: String = "",
 )
@@ -51,6 +58,7 @@ fun TelemetrySnapshot.toDroneState(): DroneState {
         homeLongitude = homeLongitude.takeIf { homeAvailable },
         altitudeMeters = relativeAltitudeM,
         headingDegrees = headingDeg,
+        isOnGround = connected && !armed,
         missionStatus = missionStage,
         statusMessage = latestAlert,
     )

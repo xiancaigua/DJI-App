@@ -26,9 +26,9 @@ fun EventScreen(events: List<MobileEvent>) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("System Events", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("系统事件", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    "Recent mission responses, heartbeat issues, and safety gate rejections appear here.",
+                    "这里显示最近的任务响应、心跳问题和安全门控事件。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -38,7 +38,7 @@ fun EventScreen(events: List<MobileEvent>) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "No events received yet.",
+                        text = "暂时没有事件。",
                         modifier = Modifier.padding(16.dp),
                     )
                 }
@@ -52,9 +52,9 @@ fun EventScreen(events: List<MobileEvent>) {
                     ) {
                         Text("${event.level} · ${event.code}", fontWeight = FontWeight.SemiBold)
                         Text(event.message)
-                        Text("Error code: ${event.errorCode}")
-                        Text("Mission: ${event.relatedMissionId.ifBlank { "-" }}")
-                        Text("Received: ${event.receivedAt}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("错误码：${event.errorCode}")
+                        Text("任务：${event.relatedMissionId.ifBlank { "-" }}")
+                        Text("接收时间：${event.receivedAt}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

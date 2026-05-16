@@ -36,7 +36,7 @@ object DjiDroneController : DroneController {
         Log.i(TAG, "DJI disconnect requested; lifecycle remains managed by SDK/product state")
         return ActionResult(
             success = true,
-            message = "DJI connection lifecycle is managed by controller/aircraft state",
+            message = "DJI 连接生命周期由 SDK 和飞机状态统一管理",
         )
     }
 
@@ -93,7 +93,7 @@ object DjiDroneController : DroneController {
         Log.w(TAG, "Resume mission is not supported in current DJI waypoint flow")
         return ActionResult(
             success = false,
-            message = "DJI waypoint flow does not expose resumeMission yet; use Stop/Start on the current UI path.",
+            message = "当前 DJI 航点流程暂不支持继续，请使用停止/开始。",
             errorCode = -1,
         )
     }
@@ -109,12 +109,12 @@ object DjiDroneController : DroneController {
 
     override suspend fun returnHome(missionId: String?): ActionResult {
         val goHomeKey = KeyTools.createKey(FlightControllerKey.KeyStartGoHome)
-        return performFlightAction(goHomeKey, "Requested DJI return-to-home")
+        return performFlightAction(goHomeKey, "已请求 DJI 返航")
     }
 
     override suspend fun land(missionId: String?): ActionResult {
         val autoLandingKey = KeyTools.createKey(FlightControllerKey.KeyStartAutoLanding)
-        return performFlightAction(autoLandingKey, "Requested DJI auto landing")
+        return performFlightAction(autoLandingKey, "已请求 DJI 自动降落")
     }
 
     private suspend fun <P, R> performFlightAction(
@@ -130,7 +130,7 @@ object DjiDroneController : DroneController {
         }
 
         val keyManager = KeyManager.getInstance()
-            ?: return ActionResult(false, "DJI KeyManager is not available", -1)
+            ?: return ActionResult(false, "DJI KeyManager 不可用", -1)
 
         return suspendCancellableCoroutine { continuation ->
             keyManager.performAction(key, object : CommonCallbacks.CompletionCallbackWithParam<R> {
@@ -154,7 +154,7 @@ object DjiDroneController : DroneController {
     private fun ensureConnectedForMission(actionName: String): ActionResult? {
         if (!DjiConnectionManager.isConnected()) {
             Log.w(TAG, "DJI action $actionName rejected because no product is connected")
-            return ActionResult(false, "No DJI product connected", -1)
+            return ActionResult(false, "当前没有连接 DJI 产品", -1)
         }
         return null
     }

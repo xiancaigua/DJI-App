@@ -42,11 +42,11 @@ private enum class AppSection(
     val label: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
 ) {
-    CONNECT("Connect", Icons.Outlined.CellTower),
-    DASHBOARD("Dashboard", Icons.Outlined.Dashboard),
-    MISSION("Mission", Icons.Outlined.Map),
-    CONTROL("Control", Icons.Outlined.Flight),
-    EVENTS("Events", Icons.Outlined.Notifications),
+    CONNECT("连接", Icons.Outlined.CellTower),
+    DASHBOARD("总览", Icons.Outlined.Dashboard),
+    MISSION("任务", Icons.Outlined.Map),
+    CONTROL("控制", Icons.Outlined.Flight),
+    EVENTS("事件", Icons.Outlined.Notifications),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,6 +65,8 @@ fun UavApp(
             state = state,
             onClose = viewModel::closeDeveloperPanel,
             onRefreshSnapshot = viewModel::refreshDeveloperSnapshot,
+            onCopyDiagnosticSummary = viewModel::onDeveloperSummaryCopied,
+            onCopyRecentLogs = viewModel::onDeveloperLogsCopied,
             onClearLogs = viewModel::clearDeveloperLogs,
         )
         return
@@ -90,9 +92,9 @@ fun UavApp(
             TopAppBar(
                 title = {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("PX4 Mobile Task Client", fontWeight = FontWeight.Bold)
+                        Text("无人机任务端", fontWeight = FontWeight.Bold)
                         Text(
-                            text = "Active backend: ${state.activeBackend.displayLabel()}",
+                            text = "当前后端：${state.activeBackend.displayLabel()}",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -106,21 +108,12 @@ fun UavApp(
                 actions = {
                     AssistChip(
                         onClick = ::handleStatusChipTap,
-                        label = {
-                            Text(
-                                when (state.connectionStatus) {
-                                    ConnectionStatus.CONNECTED -> "Connected"
-                                    ConnectionStatus.CONNECTING -> "Connecting"
-                                    ConnectionStatus.FAILED -> "Failed"
-                                    ConnectionStatus.DISCONNECTED -> "Offline"
-                                },
-                            )
-                        },
+                        label = { Text(state.topStatusLabel) },
                         leadingIcon = {
                             Box(
                                 modifier = Modifier
                                     .background(
-                                        color = when (state.connectionStatus) {
+                                        color = when (state.topStatusKind) {
                                             ConnectionStatus.CONNECTED -> Success
                                             ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.secondary
                                             ConnectionStatus.FAILED -> Alert
@@ -183,7 +176,7 @@ fun UavApp(
                     onRefresh = viewModel::refreshMissions,
                     onStart = viewModel::startMission,
                     onPause = viewModel::pauseMission,
-                    secondaryActionLabel = if (state.activeBackend == DroneBackend.DJI) "Stop" else "Resume",
+                    secondaryActionLabel = if (state.activeBackend == DroneBackend.DJI) "停止" else "继续",
                     onSecondaryAction = if (state.activeBackend == DroneBackend.DJI) {
                         viewModel::stopMission
                     } else {
@@ -201,7 +194,7 @@ fun UavApp(
 
 private fun DroneBackend.displayLabel(): String {
     return when (this) {
-        DroneBackend.SELF_ROS -> "Self ROS"
+        DroneBackend.SELF_ROS -> "自研 ROS"
         DroneBackend.DJI -> "DJI MSDK"
     }
 }

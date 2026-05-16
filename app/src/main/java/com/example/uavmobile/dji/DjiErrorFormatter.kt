@@ -5,7 +5,7 @@ import com.example.uavmobile.BuildConfig
 object DjiErrorFormatter {
     fun describe(error: Any?): String {
         if (error == null) {
-            return "Unknown DJI error"
+            return "未知 DJI 错误"
         }
 
         val description = runCatching {
@@ -22,35 +22,35 @@ object DjiErrorFormatter {
 
         val rawText = listOf(description, errorCode, error.toString())
             .firstOrNull { it.isNotBlank() }
-            ?: "Unknown DJI error"
+            ?: "未知 DJI 错误"
 
         val hint = buildHint(rawText)
-        return if (hint == null) rawText else "$rawText. Hint: $hint"
+        return if (hint == null) rawText else "$rawText。提示：$hint"
     }
 
     private fun buildHint(rawText: String): String? {
         val lowered = rawText.lowercase()
         return when {
             "元数据有误" in rawText || "metadata" in lowered ->
-                "Current Android applicationId is ${BuildConfig.APPLICATION_ID}. DJI Developer Center -> Package Name must exactly match this value, and the App Key must come from an Android Mobile SDK app created for the same package."
+                "当前 Android applicationId 是 ${BuildConfig.APPLICATION_ID}。DJI Developer Center 里的 Package Name 必须与它完全一致，App Key 也必须来自同一包名的 Android Mobile SDK 应用。"
 
             "第一次注册时需要连接互联网" in rawText || "internet" in lowered ->
-                "Keep the remote controller online and let registerApp() finish successfully once before retrying offline use."
+                "请让遥控器保持联网，并至少成功完成一次 registerApp()，再尝试离线使用。"
 
             "bundle" in lowered || "package" in lowered ->
-                "Current Android applicationId is ${BuildConfig.APPLICATION_ID}. Make sure DJI Developer Center uses the exact same Package Name."
+                "当前 Android applicationId 是 ${BuildConfig.APPLICATION_ID}。请确认 DJI Developer Center 使用完全相同的 Package Name。"
 
             "not registered" in lowered || "app key" in lowered ->
-                "Check API key injection, network access, and confirm DJI Developer Center Package Name matches ${BuildConfig.APPLICATION_ID}."
+                "请检查 API Key 注入、网络状态，并确认 DJI Developer Center 包名与 ${BuildConfig.APPLICATION_ID} 一致。"
 
             "disconnect" in lowered || "not connected" in lowered ->
-                "Verify controller, aircraft, and mobile device connectivity."
+                "请检查遥控器、飞机和移动设备连接。"
 
             "timeout" in lowered ->
-                "Retry after the controller and aircraft finish syncing their mission state."
+                "请等待遥控器和飞机完成任务状态同步后重试。"
 
             "fileparseerror" in lowered || "kmz" in lowered ->
-                "Verify the generated WPMZ/KMZ mission file and waypoint parameters."
+                "请检查生成的 WPMZ/KMZ 文件和航点参数。"
 
             else -> null
         }

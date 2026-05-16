@@ -9,16 +9,16 @@ class SelfDroneController(
     private val repository: UavRepository,
 ) : DroneController {
     override suspend fun connect(connectionConfig: ConnectionConfig?): ActionResult {
-        val config = connectionConfig ?: return ActionResult(false, "ROS backend requires a connection config", -1)
+        val config = connectionConfig ?: return ActionResult(false, "ROS 后端需要连接配置", -1)
         Log.i(TAG, "Connecting ROS backend to ${config.websocketUrl}")
         repository.connect(config)
-        return ActionResult(true, "Connecting to ${config.websocketUrl}")
+        return ActionResult(true, "正在连接 ${config.websocketUrl}")
     }
 
     override suspend fun disconnect(): ActionResult {
         Log.i(TAG, "Disconnecting ROS backend")
         repository.disconnect()
-        return ActionResult(true, "Disconnected from rosbridge")
+        return ActionResult(true, "已断开 rosbridge")
     }
 
     override fun getState(): Result<DroneState> {
@@ -53,7 +53,7 @@ class SelfDroneController(
 
     override suspend fun stopMission(missionId: String?): ActionResult {
         Log.w(TAG, "Stop mission is not supported for ROS backend")
-        return ActionResult(false, "Stop mission is not supported for the ROS backend", -1)
+        return ActionResult(false, "ROS 后端暂不支持停止任务", -1)
     }
 
     override suspend fun returnHome(missionId: String?): ActionResult {
@@ -70,7 +70,7 @@ class SelfDroneController(
         block: suspend (String) -> ActionResult,
     ): ActionResult {
         val selectedMissionId = missionId?.takeIf { it.isNotBlank() }
-            ?: return ActionResult(false, "Select a mission first", -1)
+            ?: return ActionResult(false, "请先选择任务", -1)
         Log.i(TAG, "Executing ROS action $actionName for mission $selectedMissionId")
         return block(selectedMissionId)
     }
