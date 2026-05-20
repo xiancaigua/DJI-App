@@ -13,8 +13,11 @@ data class DjiWaypointDiagnosticSnapshot(
     val lastDjiWaypointError: String = "",
     val lastDjiWaypointErrorHint: String = "",
     val missionExecutionState: String = "",
+    val sdkMissionExecuteState: String = "",
     val currentWaypointIndex: Int = -1,
     val missionProgress: Double = 0.0,
+    val lastInterruptionReason: String = "",
+    val lastInterruptionDiagnostics: String = "",
 )
 
 data class DjiAircraftDiagnosticSnapshot(
@@ -24,10 +27,18 @@ data class DjiAircraftDiagnosticSnapshot(
     val motorsOn: Boolean? = null,
     val isFlying: Boolean? = null,
     val isOnGround: Boolean? = null,
+    val isSimulatorStarted: Boolean? = null,
     val homeLatitude: Double? = null,
     val homeLongitude: Double? = null,
     val gpsSignalLevel: String = "",
     val gpsSatelliteCount: Int? = null,
+    val batteryPercent: Float? = null,
+    val batteryVoltage: Float? = null,
+    val groundSpeedMps: Float? = null,
+    val locationReadSucceeded: Boolean = false,
+    val locationReadError: String = "",
+    val telemetryReadSucceeded: Boolean = false,
+    val telemetryReadError: String = "",
     val rtkStatus: String = "",
 )
 
@@ -149,10 +160,18 @@ data class DeveloperSnapshot(
             appendLine("motorsOn: ${djiAircraftDiagnostics.motorsOn?.toChineseBool() ?: "无"}")
             appendLine("isFlying: ${djiAircraftDiagnostics.isFlying?.toChineseBool() ?: "无"}")
             appendLine("isOnGround: ${djiAircraftDiagnostics.isOnGround?.toChineseBool() ?: "无"}")
+            appendLine("isSimulatorStarted: ${djiAircraftDiagnostics.isSimulatorStarted?.toChineseBool() ?: "无"}")
             appendLine("homeLatitude: ${djiAircraftDiagnostics.homeLatitude?.let { "%.6f".format(it) } ?: "无"}")
             appendLine("homeLongitude: ${djiAircraftDiagnostics.homeLongitude?.let { "%.6f".format(it) } ?: "无"}")
             appendLine("gpsSignalLevel: ${djiAircraftDiagnostics.gpsSignalLevel.ifBlank { "无" }}")
             appendLine("gpsSatelliteCount: ${djiAircraftDiagnostics.gpsSatelliteCount?.toString() ?: "无"}")
+            appendLine("batteryPercent: ${djiAircraftDiagnostics.batteryPercent?.let { "%.0f%%".format(it * 100f) } ?: "无"}")
+            appendLine("batteryVoltage: ${djiAircraftDiagnostics.batteryVoltage?.let { "%.2f V".format(it) } ?: "无"}")
+            appendLine("groundSpeedMps: ${djiAircraftDiagnostics.groundSpeedMps?.let { "%.1f m/s".format(it) } ?: "无"}")
+            appendLine("locationReadSucceeded: ${djiAircraftDiagnostics.locationReadSucceeded.toChineseBool()}")
+            appendLine("locationReadError: ${djiAircraftDiagnostics.locationReadError.ifBlank { "无" }}")
+            appendLine("telemetryReadSucceeded: ${djiAircraftDiagnostics.telemetryReadSucceeded.toChineseBool()}")
+            appendLine("telemetryReadError: ${djiAircraftDiagnostics.telemetryReadError.ifBlank { "无" }}")
             appendLine("rtkStatus: ${djiAircraftDiagnostics.rtkStatus.ifBlank { "无" }}")
             appendLine()
             appendLine("位置与 Home：")
@@ -179,8 +198,11 @@ data class DeveloperSnapshot(
             appendLine("lastDjiWaypointError: ${djiWaypointDiagnostics.lastDjiWaypointError.ifBlank { "无" }}")
             appendLine("lastDjiWaypointErrorHint: ${djiWaypointDiagnostics.lastDjiWaypointErrorHint.ifBlank { "无" }}")
             appendLine("missionExecutionState: ${djiWaypointDiagnostics.missionExecutionState.ifBlank { "无" }}")
+            appendLine("sdkMissionExecuteState: ${djiWaypointDiagnostics.sdkMissionExecuteState.ifBlank { "无" }}")
             appendLine("currentWaypointIndex: ${djiWaypointDiagnostics.currentWaypointIndex}")
             appendLine("missionProgress: ${"%.0f".format(djiWaypointDiagnostics.missionProgress * 100.0)}%")
+            appendLine("lastInterruptionReason: ${djiWaypointDiagnostics.lastInterruptionReason.ifBlank { "无" }}")
+            appendLine("lastInterruptionDiagnostics: ${djiWaypointDiagnostics.lastInterruptionDiagnostics.ifBlank { "无" }}")
             appendLine()
             appendLine("任务选择：")
             appendLine("selectedMissionId: ${selectedMissionId.ifBlank { "无" }}")

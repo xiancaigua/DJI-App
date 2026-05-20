@@ -66,23 +66,28 @@ object DeveloperLogStore {
         if (entries.value.isEmpty()) {
             return NO_LOGS_AVAILABLE_MESSAGE
         }
-        return entries.value
-            .takeLast(limit)
-            .joinToString(separator = "\n") { entry ->
-                buildString {
-                    append(entry.timestamp)
-                    append(" [")
-                    append(entry.level.name)
-                    append("] ")
-                    append(entry.source)
-                    append(": ")
-                    append(entry.message)
-                    entry.details?.takeIf { it.isNotBlank() }?.let {
-                        append(" | ")
-                        append(it)
-                    }
+        return formatEntries(entries.value.takeLast(limit))
+    }
+
+    fun formatEntries(entries: List<DeveloperLogEntry>): String {
+        if (entries.isEmpty()) {
+            return NO_LOGS_AVAILABLE_MESSAGE
+        }
+        return entries.joinToString(separator = "\n") { entry ->
+            buildString {
+                append(entry.timestamp)
+                append(" [")
+                append(entry.level.name)
+                append("] ")
+                append(entry.source)
+                append(": ")
+                append(entry.message)
+                entry.details?.takeIf { it.isNotBlank() }?.let {
+                    append(" | ")
+                    append(it)
                 }
             }
+        }
     }
 
     private fun append(

@@ -20,6 +20,7 @@ import com.example.uavmobile.data.model.MissionWaypointDraft
 import com.example.uavmobile.data.model.TelemetrySnapshot
 import com.example.uavmobile.data.repository.UavRepository
 import com.example.uavmobile.debug.DeveloperLogEntry
+import com.example.uavmobile.debug.DeveloperLogLevel
 import com.example.uavmobile.debug.DeveloperLogStore
 import com.example.uavmobile.debug.DeveloperSnapshot
 import com.example.uavmobile.debug.DjiAircraftDiagnosticSnapshot
@@ -32,10 +33,13 @@ import com.example.uavmobile.dji.DjiPermissionSnapshot
 import com.example.uavmobile.dji.DjiSdkInitState
 import com.example.uavmobile.dji.DjiWaypointMissionManager
 import com.example.uavmobile.domain.MissionDraftValidator
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class UavUiState(
@@ -80,6 +84,9 @@ data class UavUiState(
     val topStatusKind: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val developerPanelVisible: Boolean = false,
     val developerLogs: List<DeveloperLogEntry> = emptyList(),
+    val developerLogsPaused: Boolean = false,
+    val developerLogsWarnErrorOnly: Boolean = false,
+    val developerLogsPausedSnapshot: List<DeveloperLogEntry>? = null,
     val developerPanelStatusMessage: String = "关键操作后先刷新快照，再复制摘要和日志。",
     val developerLogsStateMessage: String = DeveloperLogStore.NO_LOGS_RECORDED_YET_MESSAGE,
     val developerSnapshot: DeveloperSnapshot = DeveloperSnapshot(),
@@ -173,6 +180,8 @@ class UavViewModel(
 ) : ViewModel() {
     constructor() : this(UavRepository())
 
+    private var djiStatePollingJob: Job? = null
+
     private val _uiState = MutableStateFlow(syncDerivedState(UavUiState()))
     val uiState: StateFlow<UavUiState> = _uiState.asStateFlow()
 
@@ -238,6 +247,7 @@ class UavViewModel(
                 if (uiState.value.activeBackend == DroneBackend.DJI) {
                     refreshCurrentDroneState(force = true)
                 }
+                syncDjiStatePolling()
             }
         }
 
@@ -263,6 +273,7 @@ class UavViewModel(
                 if (uiState.value.activeBackend == DroneBackend.DJI) {
                     refreshCurrentDroneState(force = true)
                 }
+                syncDjiStatePolling()
             }
         }
 
@@ -279,12 +290,23 @@ class UavViewModel(
         viewModelScope.launch {
             DeveloperLogStore.entries.collect { logs ->
                 updateState { current ->
+                    if (current.developerLogsPaused) {
+                        return@updateState current
+                    }
+                    val displayedLogs = filterDeveloperLogs(
+                        logs = logs,
+                        warnErrorOnly = current.developerLogsWarnErrorOnly,
+                    )
                     current.copy(
-                        developerLogs = logs,
-                        developerLogsStateMessage = if (logs.isEmpty()) {
-                            current.developerLogsStateMessage
+                        developerLogs = displayedLogs,
+                        developerLogsStateMessage = if (displayedLogs.isEmpty()) {
+                            if (logs.isEmpty()) {
+                                current.developerLogsStateMessage
+                            } else {
+                                "当前筛选条件下没有日志。"
+                            }
                         } else {
-                            "正在显示最近 ${logs.takeLast(80).size} 条日志。"
+                            "正在显示最近 ${displayedLogs.takeLast(80).size} 条日志。"
                         },
                     )
                 }
@@ -303,6 +325,7 @@ class UavViewModel(
                 },
             ).withDisplayedMissions()
         }
+        syncDjiStatePolling()
         refreshCurrentDroneState(force = true)
     }
 
@@ -364,6 +387,9 @@ class UavViewModel(
     fun disconnect() {
         val state = uiState.value
         DeveloperLogStore.info(TAG, "收到断开请求", state.activeBackend.name)
+        if (state.activeBackend == DroneBackend.DJI) {
+            stopDjiStatePolling("收到 DJI 断开请求")
+        }
         executeAction(
             pendingMessage = when (state.activeBackend) {
                 DroneBackend.SELF_ROS -> "正在断开 rosbridge"
@@ -422,8 +448,65 @@ class UavViewModel(
         updateState {
             it.copy(
                 statusMessage = "开发日志已清空",
+                developerLogs = emptyList(),
+                developerLogsPausedSnapshot = null,
                 developerPanelStatusMessage = DeveloperLogStore.LOGS_CLEARED_SUCCESSFULLY_MESSAGE,
                 developerLogsStateMessage = DeveloperLogStore.LOGS_CLEARED_SUCCESSFULLY_MESSAGE,
+            )
+        }
+    }
+
+    fun toggleDeveloperLogsPaused() {
+        updateState { current ->
+            val paused = !current.developerLogsPaused
+            val sourceLogs = if (paused) {
+                DeveloperLogStore.entries.value
+            } else {
+                DeveloperLogStore.entries.value
+            }
+            val displayedLogs = filterDeveloperLogs(
+                logs = if (paused) sourceLogs else sourceLogs,
+                warnErrorOnly = current.developerLogsWarnErrorOnly,
+            )
+            current.copy(
+                developerLogsPaused = paused,
+                developerLogsPausedSnapshot = if (paused) sourceLogs else null,
+                developerLogs = displayedLogs,
+                developerPanelStatusMessage = if (paused) {
+                    "日志自动刷新已暂停。当前列表已冻结，适合查看关键错误。"
+                } else {
+                    "日志自动刷新已恢复。当前显示最新日志。"
+                },
+                developerLogsStateMessage = when {
+                    displayedLogs.isEmpty() && sourceLogs.isEmpty() -> DeveloperLogStore.NO_LOGS_RECORDED_YET_MESSAGE
+                    displayedLogs.isEmpty() -> "当前筛选条件下没有日志。"
+                    else -> "正在显示最近 ${displayedLogs.takeLast(80).size} 条日志。"
+                },
+            )
+        }
+    }
+
+    fun toggleDeveloperLogsWarnErrorOnly() {
+        updateState { current ->
+            val warnErrorOnly = !current.developerLogsWarnErrorOnly
+            val sourceLogs = current.developerLogsPausedSnapshot ?: DeveloperLogStore.entries.value
+            val displayedLogs = filterDeveloperLogs(
+                logs = sourceLogs,
+                warnErrorOnly = warnErrorOnly,
+            )
+            current.copy(
+                developerLogsWarnErrorOnly = warnErrorOnly,
+                developerLogs = displayedLogs,
+                developerPanelStatusMessage = if (warnErrorOnly) {
+                    "日志已切换为只看 WARN / ERROR。"
+                } else {
+                    "日志已恢复显示全部级别。"
+                },
+                developerLogsStateMessage = when {
+                    displayedLogs.isEmpty() && sourceLogs.isEmpty() -> DeveloperLogStore.NO_LOGS_RECORDED_YET_MESSAGE
+                    displayedLogs.isEmpty() -> "当前筛选条件下没有日志。"
+                    else -> "正在显示最近 ${displayedLogs.takeLast(80).size} 条日志。"
+                },
             )
         }
     }
@@ -480,8 +563,8 @@ class UavViewModel(
             )
             updateState { current ->
                 current.copy(
-                    draftWaypoints = current.draftWaypoints + waypoint,
-                    statusMessage = "已将当前位置导入为新航点",
+                    draftWaypoints = listOf(waypoint) + current.draftWaypoints,
+                    statusMessage = "已将当前位置插入为航点 1，原航点顺延",
                 )
             }
         }.onFailure { throwable ->
@@ -684,14 +767,97 @@ class UavViewModel(
         val state = uiState.value
         val result = controllerFor(state).getState()
         val snapshot = result.getOrElse { throwable ->
+            if (state.activeBackend == DroneBackend.DJI) {
+                DeveloperLogStore.warn(
+                    TAG,
+                    "DJI 飞机状态读取失败",
+                    throwable.message ?: "未知错误",
+                )
+            }
             DroneState(
                 backend = state.activeBackend,
-                statusMessage = throwable.message ?: "无法读取当前飞机状态",
+                statusMessage = if (state.activeBackend == DroneBackend.DJI) {
+                    "DJI 飞机状态读取失败：${throwable.message ?: "无法读取当前飞机状态"}"
+                } else {
+                    throwable.message ?: "无法读取当前飞机状态"
+                },
             )
         }
         if (force || snapshot != state.currentDroneState) {
-            updateState { it.copy(currentDroneState = snapshot) }
+            updateState { current ->
+                current.copy(
+                    currentDroneState = snapshot,
+                    statusMessage = if (
+                        current.activeBackend == DroneBackend.DJI &&
+                        snapshot.statusMessage.isNotBlank()
+                    ) {
+                        snapshot.statusMessage
+                    } else {
+                        current.statusMessage
+                    },
+                )
+            }
         }
+    }
+
+    private fun syncDjiStatePolling() {
+        val state = uiState.value
+        val shouldPoll = state.activeBackend == DroneBackend.DJI && state.djiProductConnected
+        if (shouldPoll) {
+            startDjiStatePolling()
+        } else {
+            stopDjiStatePolling(
+                when {
+                    state.activeBackend != DroneBackend.DJI -> "当前后端不是 DJI"
+                    !state.djiProductConnected -> "DJI 飞机未连接"
+                    else -> "DJI 状态轮询已停止"
+                },
+            )
+        }
+    }
+
+    private fun startDjiStatePolling() {
+        if (djiStatePollingJob?.isActive == true) {
+            return
+        }
+        DeveloperLogStore.info(TAG, "启动 DJI 状态轮询", "间隔 2 秒")
+        djiStatePollingJob = viewModelScope.launch {
+            while (isActive) {
+                runCatching {
+                    refreshCurrentDroneState(force = true)
+                }.onFailure { throwable ->
+                    val message = throwable.message ?: "未知错误"
+                    DeveloperLogStore.warn(TAG, "DJI 状态轮询失败", message)
+                    updateState { current ->
+                        current.copy(
+                            statusMessage = "DJI 飞行信息刷新失败：$message",
+                            currentDroneState = current.currentDroneState.copy(
+                                backend = DroneBackend.DJI,
+                                connectionState = if (current.djiProductConnected) {
+                                    current.currentDroneState.connectionState
+                                } else {
+                                    com.example.uavmobile.core.DroneConnectionState.DISCONNECTED
+                                },
+                                statusMessage = "DJI 飞行信息刷新失败：$message",
+                            ),
+                        )
+                    }
+                }
+                delay(2000)
+            }
+        }
+    }
+
+    private fun stopDjiStatePolling(reason: String) {
+        val job = djiStatePollingJob ?: return
+        job.cancel()
+        djiStatePollingJob = null
+        DeveloperLogStore.info(TAG, "停止 DJI 状态轮询", reason)
+    }
+
+    override fun onCleared() {
+        stopDjiStatePolling("ViewModel 已销毁")
+        super.onCleared()
     }
 
     private fun updateState(transform: (UavUiState) -> UavUiState) {
@@ -766,8 +932,11 @@ class UavViewModel(
                 lastDjiWaypointError = DjiWaypointMissionManager.missionState.value.lastDjiWaypointError,
                 lastDjiWaypointErrorHint = DjiWaypointMissionManager.missionState.value.lastDjiWaypointErrorHint,
                 missionExecutionState = DjiWaypointMissionManager.missionState.value.state.name,
+                sdkMissionExecuteState = DjiWaypointMissionManager.missionState.value.sdkMissionExecuteState,
                 currentWaypointIndex = DjiWaypointMissionManager.missionState.value.currentWaypointIndex,
                 missionProgress = DjiWaypointMissionManager.missionState.value.progress,
+                lastInterruptionReason = DjiWaypointMissionManager.missionState.value.lastInterruptionReason,
+                lastInterruptionDiagnostics = DjiWaypointMissionManager.missionState.value.lastInterruptionDiagnostics,
             ),
             djiAircraftDiagnostics = DjiAircraftDiagnosticSnapshot(
                 productConnected = state.djiProductConnected,
@@ -776,10 +945,18 @@ class UavViewModel(
                 motorsOn = state.currentDroneState.motorsOn,
                 isFlying = state.currentDroneState.isFlying,
                 isOnGround = state.currentDroneState.isOnGround,
+                isSimulatorStarted = state.currentDroneState.isSimulatorStarted,
                 homeLatitude = state.currentDroneState.homeLatitude,
                 homeLongitude = state.currentDroneState.homeLongitude,
                 gpsSignalLevel = state.currentDroneState.gpsSignalLevel,
                 gpsSatelliteCount = state.currentDroneState.gpsSatelliteCount,
+                batteryPercent = state.currentDroneState.batteryPercent,
+                batteryVoltage = state.currentDroneState.batteryVoltage,
+                groundSpeedMps = state.currentDroneState.groundSpeedMps,
+                locationReadSucceeded = state.currentDroneState.locationReadSucceeded,
+                locationReadError = state.currentDroneState.locationReadError,
+                telemetryReadSucceeded = state.currentDroneState.telemetryReadSucceeded,
+                telemetryReadError = state.currentDroneState.telemetryReadError,
                 rtkStatus = state.currentDroneState.rtkStatus,
             ),
             djiConnectionDiagnostics = DjiConnectionDiagnosticSnapshot(
@@ -842,6 +1019,18 @@ class UavViewModel(
 
     companion object {
         private const val TAG = "UavViewModel"
+    }
+}
+
+private fun filterDeveloperLogs(
+    logs: List<DeveloperLogEntry>,
+    warnErrorOnly: Boolean,
+): List<DeveloperLogEntry> {
+    if (!warnErrorOnly) {
+        return logs
+    }
+    return logs.filter { entry ->
+        entry.level == DeveloperLogLevel.WARN || entry.level == DeveloperLogLevel.ERROR
     }
 }
 

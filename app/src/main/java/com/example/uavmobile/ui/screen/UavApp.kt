@@ -68,6 +68,8 @@ fun UavApp(
             onCopyDiagnosticSummary = viewModel::onDeveloperSummaryCopied,
             onCopyRecentLogs = viewModel::onDeveloperLogsCopied,
             onClearLogs = viewModel::clearDeveloperLogs,
+            onToggleLogsPaused = viewModel::toggleDeveloperLogsPaused,
+            onToggleWarnErrorOnly = viewModel::toggleDeveloperLogsWarnErrorOnly,
         )
         return
     }

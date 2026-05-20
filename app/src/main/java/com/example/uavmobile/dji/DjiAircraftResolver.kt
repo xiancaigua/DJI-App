@@ -5,6 +5,7 @@ import dji.sdk.keyvalue.value.product.ProductType
 
 enum class DjiWaylineAircraftType {
     PM440,
+    EA220,
     WA345,
     EA230,
 }
@@ -70,8 +71,8 @@ object DjiAircraftResolver {
             DjiAircraftFamily.MATRICE_4_SERIES -> DjiAircraftResolution.Supported(
                 requestedFamily = selectedAircraftFamily,
                 resolvedProductTypeName = null,
-                resolvedAircraft = DjiWaylineAircraftType.WA345,
-                message = "Using manual DJI aircraft selection Matrice 4 Series -> WaylineDroneType.WA345",
+                resolvedAircraft = DjiWaylineAircraftType.EA220,
+                message = "Using manual DJI aircraft selection Matrice 4 Series -> WaylineDroneType.EA220",
             )
         }
     }

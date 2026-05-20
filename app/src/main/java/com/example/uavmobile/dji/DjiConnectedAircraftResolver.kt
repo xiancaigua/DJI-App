@@ -16,8 +16,8 @@ object DjiConnectedAircraftResolver {
             ProductType.DJI_MATRICE_4_SERIES -> DjiAircraftResolution.Supported(
                 requestedFamily = DjiAircraftFamily.MATRICE_4_SERIES,
                 resolvedProductTypeName = productType.name,
-                resolvedAircraft = DjiWaylineAircraftType.WA345,
-                message = "已将 DJI_MATRICE_4_SERIES 解析为 WaylineDroneType.WA345",
+                resolvedAircraft = DjiWaylineAircraftType.EA220,
+                message = "已将 DJI_MATRICE_4_SERIES 解析为 WaylineDroneType.EA220",
             )
 
             ProductType.DJI_MATRICE_4D_SERIES -> DjiAircraftResolution.Supported(

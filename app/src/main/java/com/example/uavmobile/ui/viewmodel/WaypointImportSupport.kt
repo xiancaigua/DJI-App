@@ -33,7 +33,7 @@ object WaypointImportSupport {
             )
         }
 
-        val template = existingWaypoints.lastOrNull() ?: MissionWaypointDraft()
+        val template = existingWaypoints.firstOrNull() ?: MissionWaypointDraft()
         return Result.success(
             template.copy(
                 lat = String.format(Locale.US, "%.6f", latitude),
