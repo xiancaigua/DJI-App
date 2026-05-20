@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -32,10 +33,14 @@ fun DeveloperPanelScreen(
     onCopyDiagnosticSummary: () -> Unit,
     onCopyRecentLogs: (Boolean) -> Unit,
     onClearLogs: () -> Unit,
+    onToggleLogsPaused: () -> Unit,
+    onToggleWarnErrorOnly: () -> Unit,
 ) {
     val clipboardManager = LocalClipboardManager.current
     val snapshot = state.developerSnapshot
-    val recentLogs = DeveloperLogStore.formatRecentLogs()
+    val recentLogs = DeveloperLogStore.formatEntries(state.developerLogs)
+    val panelScrollState = rememberScrollState()
+    val logScrollState = rememberScrollState()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -44,7 +49,7 @@ fun DeveloperPanelScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(panelScrollState)
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -86,6 +91,15 @@ fun DeveloperPanelScreen(
                 }
                 OutlinedButton(onClick = onClearLogs, modifier = Modifier.weight(1f)) {
                     Text("清空日志")
+                }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onToggleWarnErrorOnly, modifier = Modifier.weight(1f)) {
+                    Text(if (state.developerLogsWarnErrorOnly) "显示全部日志" else "只看 WARN/ERROR")
+                }
+                OutlinedButton(onClick = onToggleLogsPaused, modifier = Modifier.weight(1f)) {
+                    Text(if (state.developerLogsPaused) "恢复自动刷新" else "暂停自动刷新")
                 }
             }
 
@@ -180,10 +194,18 @@ fun DeveloperPanelScreen(
                     "电机已启动：${snapshot.djiAircraftDiagnostics.motorsOn?.toChineseBool() ?: "无"}",
                     "正在飞行：${snapshot.djiAircraftDiagnostics.isFlying?.toChineseBool() ?: "无"}",
                     "地面状态：${snapshot.djiAircraftDiagnostics.isOnGround?.toChineseBool() ?: "无"}",
+                    "模拟器已启动：${snapshot.djiAircraftDiagnostics.isSimulatorStarted?.toChineseBool() ?: "无"}",
                     "Home 纬度：${snapshot.djiAircraftDiagnostics.homeLatitude?.let { "%.6f".format(it) } ?: "无"}",
                     "Home 经度：${snapshot.djiAircraftDiagnostics.homeLongitude?.let { "%.6f".format(it) } ?: "无"}",
                     "GPS 信号：${snapshot.djiAircraftDiagnostics.gpsSignalLevel.ifBlank { "无" }}",
                     "卫星数：${snapshot.djiAircraftDiagnostics.gpsSatelliteCount?.toString() ?: "无"}",
+                    "电量：${snapshot.djiAircraftDiagnostics.batteryPercent?.let { "%.0f%%".format(it * 100f) } ?: "无"}",
+                    "电压：${snapshot.djiAircraftDiagnostics.batteryVoltage?.let { "%.2f V".format(it) } ?: "无"}",
+                    "地速：${snapshot.djiAircraftDiagnostics.groundSpeedMps?.let { "%.1f m/s".format(it) } ?: "无"}",
+                    "位置读取成功：${snapshot.djiAircraftDiagnostics.locationReadSucceeded.toChineseBool()}",
+                    "位置读取错误：${snapshot.djiAircraftDiagnostics.locationReadError.ifBlank { "无" }}",
+                    "遥测读取成功：${snapshot.djiAircraftDiagnostics.telemetryReadSucceeded.toChineseBool()}",
+                    "遥测读取错误：${snapshot.djiAircraftDiagnostics.telemetryReadError.ifBlank { "无" }}",
                     "RTK：${snapshot.djiAircraftDiagnostics.rtkStatus.ifBlank { "无" }}",
                 ),
             )
@@ -228,8 +250,11 @@ fun DeveloperPanelScreen(
                     "最后错误：${snapshot.djiWaypointDiagnostics.lastDjiWaypointError.ifBlank { "无" }}",
                     "错误提示：${snapshot.djiWaypointDiagnostics.lastDjiWaypointErrorHint.ifBlank { "无" }}",
                     "执行状态：${snapshot.djiWaypointDiagnostics.missionExecutionState.ifBlank { "无" }}",
+                    "SDK 执行状态：${snapshot.djiWaypointDiagnostics.sdkMissionExecuteState.ifBlank { "无" }}",
                     "当前航点：${snapshot.djiWaypointDiagnostics.currentWaypointIndex}",
                     "任务进度：${"%.0f".format(snapshot.djiWaypointDiagnostics.missionProgress * 100.0)}%",
+                    "最近中断原因：${snapshot.djiWaypointDiagnostics.lastInterruptionReason.ifBlank { "无" }}",
+                    "最近中断诊断：${snapshot.djiWaypointDiagnostics.lastInterruptionDiagnostics.ifBlank { "无" }}",
                 ),
             )
 
@@ -289,10 +314,17 @@ fun DeveloperPanelScreen(
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(logScrollState),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text("最近日志", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "日志区已独立滚动，避免整页随新日志跳动。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     if (state.developerLogs.isEmpty()) {
                         Text(state.developerLogsStateMessage)
                     } else {

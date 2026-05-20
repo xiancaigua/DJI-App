@@ -29,6 +29,7 @@ enum class MissionExecutionState {
     PAUSED,
     STOPPING,
     STOPPED,
+    FINISHED,
     FAILED,
 }
 
@@ -39,6 +40,8 @@ data class MissionExecutionSnapshot(
     val waypointCount: Int = 0,
     val currentWaypointIndex: Int = -1,
     val progress: Double = 0.0,
+    val uploadProgress: Double = 0.0,
+    val sdkMissionExecuteState: String = "",
     val message: String = "当前还没有准备 DJI 任务",
     val selectedDjiAircraftFamily: String = "",
     val resolvedWaylineDroneType: String = "",
@@ -49,6 +52,8 @@ data class MissionExecutionSnapshot(
     val lastDjiWaypointActionSuccess: Boolean? = null,
     val lastDjiWaypointError: String = "",
     val lastDjiWaypointErrorHint: String = "",
+    val lastInterruptionReason: String = "",
+    val lastInterruptionDiagnostics: String = "",
 )
 
 fun MissionExecutionSnapshot.toMissionSummaryOrNull(): MissionSummary? {
@@ -60,7 +65,16 @@ fun MissionExecutionSnapshot.toMissionSummaryOrNull(): MissionSummary? {
         missionId = missionId,
         waypointCount = waypointCount,
         status = state.displayLabel(),
-        progress = progress.toFloat().coerceIn(0f, 1f),
+        progress = when (state) {
+            MissionExecutionState.RUNNING,
+            MissionExecutionState.PAUSED,
+            MissionExecutionState.STOPPING,
+            MissionExecutionState.STOPPED,
+            MissionExecutionState.FINISHED,
+            -> progress.toFloat().coerceIn(0f, 1f)
+
+            else -> 0f
+        },
     )
 }
 
@@ -76,6 +90,7 @@ fun MissionExecutionState.displayLabel(): String {
         MissionExecutionState.PAUSED -> "已暂停"
         MissionExecutionState.STOPPING -> "停止中"
         MissionExecutionState.STOPPED -> "已停止"
+        MissionExecutionState.FINISHED -> "已完成"
         MissionExecutionState.FAILED -> "失败"
     }
 }

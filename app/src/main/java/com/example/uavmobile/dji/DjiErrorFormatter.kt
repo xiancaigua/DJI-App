@@ -46,6 +46,9 @@ object DjiErrorFormatter {
             "disconnect" in lowered || "not connected" in lowered ->
                 "请检查遥控器、飞机和移动设备连接。"
 
+            "heading_level_poor" in lowered || "compass" in lowered || "yaw" in lowered ->
+                "航向质量不足。请先等待指南针/航向稳定，远离金属和强磁干扰源，确认飞机完成定位且机头朝向不再明显跳变后再启动任务。"
+
             "timeout" in lowered ->
                 "请等待遥控器和飞机完成任务状态同步后重试。"
 
