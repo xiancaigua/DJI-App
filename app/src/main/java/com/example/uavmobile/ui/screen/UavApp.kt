@@ -30,6 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.uavmobile.core.DroneBackend
@@ -93,24 +94,32 @@ fun UavApp(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("无人机任务端", fontWeight = FontWeight.Bold)
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text(
-                            text = "当前后端：${state.activeBackend.displayLabel()}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
+                            text = "无人机任务端 · ${state.activeBackend.displayLabel()}",
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text = state.statusMessage,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
                 actions = {
                     AssistChip(
                         onClick = ::handleStatusChipTap,
-                        label = { Text(state.topStatusLabel) },
+                        label = {
+                            Text(
+                                text = state.topStatusLabel,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
                         leadingIcon = {
                             Box(
                                 modifier = Modifier
@@ -186,6 +195,12 @@ fun UavApp(
                     },
                     onRtl = viewModel::rtl,
                     onLand = viewModel::land,
+                    onCameraPreviewEntered = viewModel::onCameraPreviewEntered,
+                    onCameraPreviewExited = viewModel::onCameraPreviewExited,
+                    onCameraSurfaceAvailable = viewModel::onCameraSurfaceAvailable,
+                    onCameraSurfaceDestroyed = viewModel::onCameraSurfaceDestroyed,
+                    onRefreshCameraSources = viewModel::refreshCameraSources,
+                    onSwitchCameraSource = viewModel::switchCameraSource,
                 )
 
                 AppSection.EVENTS -> EventScreen(events = state.events)

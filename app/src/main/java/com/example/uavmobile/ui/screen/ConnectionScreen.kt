@@ -1,6 +1,7 @@
 package com.example.uavmobile.ui.screen
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,8 +45,8 @@ fun ConnectionScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
             text = "连接设置",
@@ -77,19 +78,20 @@ fun ConnectionScreen(
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = onConnect,
                 enabled = state.connectionStatus != ConnectionStatus.CONNECTING && !state.busy,
+                modifier = Modifier.weight(1f),
             ) {
                 Text(if (state.activeBackend == DroneBackend.DJI) "初始化 DJI" else "连接")
             }
 
-            OutlinedButton(onClick = onDisconnect, enabled = !state.busy) {
+            OutlinedButton(onClick = onDisconnect, enabled = !state.busy, modifier = Modifier.weight(1f)) {
                 Text("断开")
             }
 
-            OutlinedButton(onClick = onRefreshMissions, enabled = !state.busy) {
+            OutlinedButton(onClick = onRefreshMissions, enabled = !state.busy, modifier = Modifier.weight(1f)) {
                 Text(if (state.activeBackend == DroneBackend.DJI) "刷新状态" else "同步任务")
             }
         }
@@ -108,8 +110,8 @@ private fun BackendSelector(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("飞行后端", fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -139,8 +141,8 @@ private fun RosBackendCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("ROS 连接", fontWeight = FontWeight.SemiBold)
             Text(
@@ -148,22 +150,45 @@ private fun RosBackendCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            OutlinedTextField(
-                value = state.connectionConfig.host,
-                onValueChange = onHostChanged,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("主机 / IP") },
-                singleLine = true,
-            )
-
-            OutlinedTextField(
-                value = state.connectionConfig.port,
-                onValueChange = onPortChanged,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("端口") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-            )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                if (maxWidth >= 520.dp) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = state.connectionConfig.host,
+                            onValueChange = onHostChanged,
+                            modifier = Modifier.weight(2f),
+                            label = { Text("主机 / IP") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = state.connectionConfig.port,
+                            onValueChange = onPortChanged,
+                            modifier = Modifier.weight(1f),
+                            label = { Text("端口") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                        )
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = state.connectionConfig.host,
+                            onValueChange = onHostChanged,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("主机 / IP") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = state.connectionConfig.port,
+                            onValueChange = onPortChanged,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("端口") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -179,8 +204,8 @@ private fun DjiBackendCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("DJI 连接", fontWeight = FontWeight.SemiBold)
             Text(
@@ -208,10 +233,14 @@ private fun DjiBackendCard(
             }
 
             Text("权限", fontWeight = FontWeight.Medium)
-            Text(state.djiPermissionStatusMessage)
-            Text(
-                "应用 ID：${BuildConfig.APPLICATION_ID}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            CompactInfoGrid(
+                items = listOf(
+                    CompactInfoItem("权限状态", state.djiPermissionStatusMessage),
+                    CompactInfoItem("应用 ID", BuildConfig.APPLICATION_ID),
+                ),
+                maxColumns = 2,
+                minItemWidth = 180.dp,
+                valueMaxLines = 2,
             )
             Text(
                 "DJI 平台包名必须与上面的应用 ID 完全一致。",
@@ -240,32 +269,46 @@ private fun StatusCard(state: UavUiState) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("状态", fontWeight = FontWeight.SemiBold)
-            Text("顶部状态：${state.topStatusLabel}")
-            Text("飞机连接：${if (state.vehicleConnected) "是" else "否"}")
             if (state.activeBackend == DroneBackend.SELF_ROS) {
-                Text("Backend link status：${state.rosConnectionStatus.name}")
-                Text("Vehicle / Aircraft connection status：${if (state.telemetry.connected) "飞机已连接" else "飞机离线"}")
-                Text("WebSocket：${state.connectionConfig.websocketUrl}")
-                Text("遥测连机：${if (state.telemetry.connected) "是" else "否"}")
-                Text("会话活跃：${if (state.telemetry.sessionActive) "是" else "否"}")
-                Text("最新告警：${state.telemetry.latestAlert.ifBlank { "无" }}")
+                CompactInfoGrid(
+                    items = listOf(
+                        CompactInfoItem("顶部状态", state.topStatusLabel),
+                        CompactInfoItem("飞机连接", if (state.vehicleConnected) "是" else "否"),
+                        CompactInfoItem("Backend link", state.rosConnectionStatus.name),
+                        CompactInfoItem("Aircraft status", if (state.telemetry.connected) "飞机已连接" else "飞机离线"),
+                        CompactInfoItem("WebSocket", state.connectionConfig.websocketUrl),
+                        CompactInfoItem("遥测连机", if (state.telemetry.connected) "是" else "否"),
+                        CompactInfoItem("会话活跃", if (state.telemetry.sessionActive) "是" else "否"),
+                        CompactInfoItem("最新告警", state.telemetry.latestAlert.ifBlank { "无" }),
+                    ),
+                    minItemWidth = 150.dp,
+                    valueMaxLines = 2,
+                )
             } else {
-                Text("Backend link status：DJI MSDK")
-                Text("Vehicle / Aircraft connection status：${if (state.djiProductConnected) "DJI 飞机已连接" else "飞机离线"}")
-                Text("DJI SDK registration status：${state.djiSdkInitState.name}")
-                Text("DJI SDK 文本：${state.djiSdkStatusMessage}")
-                Text("DJI product connection status：${state.djiProductStatusMessage}")
-                Text("ProductKey.KeyConnection：${state.djiKeyConnectionValue?.let { if (it) "true" else "false" } ?: "无"}")
-                Text("ProductKey.KeyProductType：${state.djiProductTypeLabel.ifBlank { "无" }}")
-                Text("连接来源：${state.djiLastConnectionSource.ifBlank { "无" }}")
-                Text("最后刷新：${state.djiLastRefreshReason.ifBlank { "无" }}")
-                Text("最后错误：${state.djiLastRefreshError.ifBlank { "无" }}")
-                Text("Connection monitor：${if (state.djiConnectionMonitorRunning) "运行中" else "未运行"}，tick=${state.djiConnectionMonitorTickCount}")
-                Text("权限已授予：${if (state.djiPermissionsGranted) "是" else "否"}")
+                CompactInfoGrid(
+                    items = listOf(
+                        CompactInfoItem("顶部状态", state.topStatusLabel),
+                        CompactInfoItem("飞机连接", if (state.vehicleConnected) "是" else "否"),
+                        CompactInfoItem("Backend link", "DJI MSDK"),
+                        CompactInfoItem("Aircraft status", if (state.djiProductConnected) "DJI 飞机已连接" else "飞机离线"),
+                        CompactInfoItem("SDK 注册", state.djiSdkInitState.name),
+                        CompactInfoItem("SDK 文本", state.djiSdkStatusMessage),
+                        CompactInfoItem("Product status", state.djiProductStatusMessage),
+                        CompactInfoItem("KeyConnection", state.djiKeyConnectionValue?.let { if (it) "true" else "false" } ?: "无"),
+                        CompactInfoItem("ProductType", state.djiProductTypeLabel.ifBlank { "无" }),
+                        CompactInfoItem("连接来源", state.djiLastConnectionSource.ifBlank { "无" }),
+                        CompactInfoItem("最后刷新", state.djiLastRefreshReason.ifBlank { "无" }),
+                        CompactInfoItem("最后错误", state.djiLastRefreshError.ifBlank { "无" }),
+                        CompactInfoItem("Monitor", "${if (state.djiConnectionMonitorRunning) "运行中" else "未运行"} / tick=${state.djiConnectionMonitorTickCount}"),
+                        CompactInfoItem("权限", if (state.djiPermissionsGranted) "已授予" else "未授予"),
+                    ),
+                    minItemWidth = 150.dp,
+                    valueMaxLines = 2,
+                )
                 Text(
                     "模拟器只验证初始化和日志，不代表真实连机。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

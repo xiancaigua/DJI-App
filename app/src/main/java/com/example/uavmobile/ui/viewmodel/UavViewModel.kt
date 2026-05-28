@@ -1,13 +1,17 @@
 package com.example.uavmobile.ui.viewmodel
 
 import android.util.Log
+import android.view.Surface
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.uavmobile.BuildConfig
+import com.example.uavmobile.core.CameraStreamSnapshot
 import com.example.uavmobile.core.DjiAircraftFamily
 import com.example.uavmobile.core.DroneBackend
 import com.example.uavmobile.core.DroneController
 import com.example.uavmobile.core.DroneState
+import com.example.uavmobile.core.MissionExecutionSnapshot
+import com.example.uavmobile.core.ObstacleAvoidanceSnapshot
 import com.example.uavmobile.core.SelfDroneController
 import com.example.uavmobile.core.toDroneState
 import com.example.uavmobile.core.toMissionSummaryOrNull
@@ -24,16 +28,21 @@ import com.example.uavmobile.debug.DeveloperLogLevel
 import com.example.uavmobile.debug.DeveloperLogStore
 import com.example.uavmobile.debug.DeveloperSnapshot
 import com.example.uavmobile.debug.DjiAircraftDiagnosticSnapshot
+import com.example.uavmobile.debug.DjiCameraStreamDiagnosticSnapshot
 import com.example.uavmobile.debug.DjiConnectionDiagnosticSnapshot
+import com.example.uavmobile.debug.DjiObstacleAvoidanceDiagnosticSnapshot
 import com.example.uavmobile.debug.DjiWaypointDiagnosticSnapshot
+import com.example.uavmobile.dji.AircraftCameraStreamManager
 import com.example.uavmobile.dji.DjiConnectionManager
 import com.example.uavmobile.dji.DjiDroneController
 import com.example.uavmobile.dji.DjiMsdkManager
 import com.example.uavmobile.dji.DjiPermissionSnapshot
 import com.example.uavmobile.dji.DjiSdkInitState
 import com.example.uavmobile.dji.DjiWaypointMissionManager
+import com.example.uavmobile.dji.ObstacleAvoidanceSafetyManager
 import com.example.uavmobile.domain.MissionDraftValidator
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -79,6 +88,8 @@ data class UavUiState(
     val djiConnectionMonitorRunning: Boolean = false,
     val djiConnectionMonitorStartedAt: String = "",
     val djiConnectionMonitorTickCount: Int = 0,
+    val djiObstacleAvoidance: ObstacleAvoidanceSnapshot = ObstacleAvoidanceSnapshot(),
+    val cameraStream: CameraStreamSnapshot = CameraStreamSnapshot(),
     val vehicleConnected: Boolean = false,
     val topStatusLabel: String = "飞机离线",
     val topStatusKind: ConnectionStatus = ConnectionStatus.DISCONNECTED,
@@ -277,15 +288,49 @@ class UavViewModel(
             }
         }
 
+        runCatching { DjiWaypointMissionManager.missionState }
+            .onSuccess { missionStateFlow ->
+                viewModelScope.launch {
+                    missionStateFlow.collect { missionState ->
+                        updateState { current ->
+                            current.withDisplayedMissions(
+                                djiMissionSummary = missionState.toMissionSummaryOrNull(),
+                            )
+                        }
+                    }
+                }
+            }.onFailure { throwable ->
+                DeveloperLogStore.warn(
+                    TAG,
+                    "DJI waypoint mission state is unavailable in this runtime",
+                    throwable.message,
+                )
+            }
+
         viewModelScope.launch {
-            DjiWaypointMissionManager.missionState.collect { missionState ->
+            ObstacleAvoidanceSafetyManager.safetyState.collect { obstacleSnapshot ->
                 updateState { current ->
-                    current.withDisplayedMissions(
-                        djiMissionSummary = missionState.toMissionSummaryOrNull(),
-                    )
+                    current.copy(djiObstacleAvoidance = obstacleSnapshot)
                 }
             }
         }
+
+        runCatching { AircraftCameraStreamManager.cameraStreamState }
+            .onSuccess { cameraStreamState ->
+                viewModelScope.launch {
+                    cameraStreamState.collect { cameraSnapshot ->
+                        updateState { current ->
+                            current.copy(cameraStream = cameraSnapshot)
+                        }
+                    }
+                }
+            }.onFailure { throwable ->
+                DeveloperLogStore.warn(
+                    TAG,
+                    "DJI camera stream state is unavailable in this runtime",
+                    throwable.message,
+                )
+            }
 
         viewModelScope.launch {
             DeveloperLogStore.entries.collect { logs ->
@@ -324,6 +369,9 @@ class UavViewModel(
                     DroneBackend.DJI -> "已切换到 DJI MSDK 后端"
                 },
             ).withDisplayedMissions()
+        }
+        if (activeBackend != DroneBackend.DJI) {
+            releaseCameraStream("å·²åˆ‡æ¢åˆ°非 DJI 后端")
         }
         syncDjiStatePolling()
         refreshCurrentDroneState(force = true)
@@ -389,6 +437,7 @@ class UavViewModel(
         DeveloperLogStore.info(TAG, "收到断开请求", state.activeBackend.name)
         if (state.activeBackend == DroneBackend.DJI) {
             stopDjiStatePolling("收到 DJI 断开请求")
+            releaseCameraStream("收到 DJI 断开请求")
         }
         executeAction(
             pendingMessage = when (state.activeBackend) {
@@ -418,6 +467,11 @@ class UavViewModel(
         if (uiState.value.activeBackend == DroneBackend.DJI) {
             DjiConnectionManager.refreshFromKeyManager("Developer Panel refresh snapshot")
             DjiConnectionManager.startConnectionMonitor("Developer Panel refresh snapshot")
+            runCatching {
+                AircraftCameraStreamManager.refreshAvailableCameras("Developer Panel refresh snapshot")
+            }.onFailure { throwable ->
+                DeveloperLogStore.warn(TAG, "DJI 视频源诊断刷新失败", throwable.message)
+            }
         }
         refreshCurrentDroneState(force = true)
         updateState {
@@ -627,11 +681,19 @@ class UavViewModel(
         updateState { it.copy(selectedMissionId = missionId) }
     }
 
-    fun startMission() = executeMissionAction(
-        actionLabel = "正在开始任务",
-        djiReadinessAction = "开始 DJI 任务",
-    ) { controller, missionId ->
-        controller.startMission(missionId)
+    fun startMission() {
+        if (uiState.value.activeBackend == DroneBackend.DJI) {
+            runCatching { AircraftCameraStreamManager.markMissionStartWarning("startMission") }
+                .onFailure { throwable ->
+                    DeveloperLogStore.warn(TAG, "航线启动前视频状态检查失败", throwable.message)
+                }
+        }
+        executeMissionAction(
+            actionLabel = "正在开始任务",
+            djiReadinessAction = "开始 DJI 任务",
+        ) { controller, missionId ->
+            controller.startMission(missionId)
+        }
     }
 
     fun pauseMission() = executeMissionAction(
@@ -855,9 +917,23 @@ class UavViewModel(
         DeveloperLogStore.info(TAG, "停止 DJI 状态轮询", reason)
     }
 
+    private fun releaseCameraStream(reason: String) {
+        runCatching {
+            AircraftCameraStreamManager.release(reason)
+        }.onFailure { throwable ->
+            DeveloperLogStore.warn(TAG, "DJI 视频资源释放失败", throwable.message)
+        }
+    }
+
     override fun onCleared() {
         stopDjiStatePolling("ViewModel 已销毁")
+        releaseCameraStream("ViewModel 已销毁")
         super.onCleared()
+    }
+
+    internal fun clearForTest() {
+        viewModelScope.coroutineContext.cancelChildren()
+        onCleared()
     }
 
     private fun updateState(transform: (UavUiState) -> UavUiState) {
@@ -880,6 +956,7 @@ class UavViewModel(
 
     private fun buildDeveloperSnapshot(state: UavUiState): DeveloperSnapshot {
         val selectedMission = state.missions.firstOrNull { it.missionId == state.selectedMissionId }
+        val djiMissionState = currentDjiMissionState()
         return DeveloperSnapshot(
             applicationId = BuildConfig.APPLICATION_ID,
             versionName = BuildConfig.VERSION_NAME,
@@ -920,23 +997,23 @@ class UavViewModel(
             selectedMissionStatus = selectedMission?.status.orEmpty(),
             selectedMissionProgress = selectedMission?.progress ?: 0f,
             djiWaypointDiagnostics = DjiWaypointDiagnosticSnapshot(
-                preparedMissionId = DjiWaypointMissionManager.missionState.value.missionId,
-                preparedMissionFileName = DjiWaypointMissionManager.missionState.value.missionFileName,
-                kmzPath = DjiWaypointMissionManager.missionState.value.kmzPath,
-                kmzFileExists = DjiWaypointMissionManager.missionState.value.kmzFileExists,
-                kmzFileSizeBytes = DjiWaypointMissionManager.missionState.value.kmzFileSizeBytes,
-                selectedDjiAircraftFamily = DjiWaypointMissionManager.missionState.value.selectedDjiAircraftFamily,
-                resolvedWaylineDroneType = DjiWaypointMissionManager.missionState.value.resolvedWaylineDroneType,
-                lastDjiWaypointAction = DjiWaypointMissionManager.missionState.value.lastDjiWaypointAction,
-                lastDjiWaypointActionSuccess = DjiWaypointMissionManager.missionState.value.lastDjiWaypointActionSuccess,
-                lastDjiWaypointError = DjiWaypointMissionManager.missionState.value.lastDjiWaypointError,
-                lastDjiWaypointErrorHint = DjiWaypointMissionManager.missionState.value.lastDjiWaypointErrorHint,
-                missionExecutionState = DjiWaypointMissionManager.missionState.value.state.name,
-                sdkMissionExecuteState = DjiWaypointMissionManager.missionState.value.sdkMissionExecuteState,
-                currentWaypointIndex = DjiWaypointMissionManager.missionState.value.currentWaypointIndex,
-                missionProgress = DjiWaypointMissionManager.missionState.value.progress,
-                lastInterruptionReason = DjiWaypointMissionManager.missionState.value.lastInterruptionReason,
-                lastInterruptionDiagnostics = DjiWaypointMissionManager.missionState.value.lastInterruptionDiagnostics,
+                preparedMissionId = djiMissionState.missionId,
+                preparedMissionFileName = djiMissionState.missionFileName,
+                kmzPath = djiMissionState.kmzPath,
+                kmzFileExists = djiMissionState.kmzFileExists,
+                kmzFileSizeBytes = djiMissionState.kmzFileSizeBytes,
+                selectedDjiAircraftFamily = djiMissionState.selectedDjiAircraftFamily,
+                resolvedWaylineDroneType = djiMissionState.resolvedWaylineDroneType,
+                lastDjiWaypointAction = djiMissionState.lastDjiWaypointAction,
+                lastDjiWaypointActionSuccess = djiMissionState.lastDjiWaypointActionSuccess,
+                lastDjiWaypointError = djiMissionState.lastDjiWaypointError,
+                lastDjiWaypointErrorHint = djiMissionState.lastDjiWaypointErrorHint,
+                missionExecutionState = djiMissionState.state.name,
+                sdkMissionExecuteState = djiMissionState.sdkMissionExecuteState,
+                currentWaypointIndex = djiMissionState.currentWaypointIndex,
+                missionProgress = djiMissionState.progress,
+                lastInterruptionReason = djiMissionState.lastInterruptionReason,
+                lastInterruptionDiagnostics = djiMissionState.lastInterruptionDiagnostics,
             ),
             djiAircraftDiagnostics = DjiAircraftDiagnosticSnapshot(
                 productConnected = state.djiProductConnected,
@@ -972,7 +1049,128 @@ class UavViewModel(
                 monitorTickCount = state.djiConnectionMonitorTickCount,
                 statusMessage = state.djiProductStatusMessage,
             ),
+            djiObstacleAvoidanceDiagnostics = DjiObstacleAvoidanceDiagnosticSnapshot(
+                mode = state.djiObstacleAvoidance.mode.name,
+                horizontalSwitch = state.djiObstacleAvoidance.horizontalSwitch.name,
+                upwardSwitch = state.djiObstacleAvoidance.upwardSwitch.name,
+                downwardSwitch = state.djiObstacleAvoidance.downwardSwitch.name,
+                horizontalWarningDistanceMeters = state.djiObstacleAvoidance.horizontalWarningDistanceMeters,
+                upwardWarningDistanceMeters = state.djiObstacleAvoidance.upwardWarningDistanceMeters,
+                downwardWarningDistanceMeters = state.djiObstacleAvoidance.downwardWarningDistanceMeters,
+                horizontalBrakingDistanceMeters = state.djiObstacleAvoidance.horizontalBrakingDistanceMeters,
+                upwardBrakingDistanceMeters = state.djiObstacleAvoidance.upwardBrakingDistanceMeters,
+                downwardBrakingDistanceMeters = state.djiObstacleAvoidance.downwardBrakingDistanceMeters,
+                nearestObstacleDistanceMeters = state.djiObstacleAvoidance.nearestObstacleDistanceMeters,
+                nearestObstacleDirection = state.djiObstacleAvoidance.nearestObstacleDirection.name,
+                safetyState = state.djiObstacleAvoidance.safetyState.name,
+                monitoringActive = state.djiObstacleAvoidance.monitoringActive,
+                lastPrepareSucceeded = state.djiObstacleAvoidance.lastPrepareSucceeded,
+                lastPrepareWarning = state.djiObstacleAvoidance.lastPrepareWarning,
+                lastPrepareError = state.djiObstacleAvoidance.lastPrepareError,
+                appPauseRequested = state.djiObstacleAvoidance.appPauseRequested,
+                lastMessage = state.djiObstacleAvoidance.lastMessage,
+                updatedAt = state.djiObstacleAvoidance.updatedAt,
+            ),
+            djiCameraStreamDiagnostics = DjiCameraStreamDiagnosticSnapshot(
+                aircraftModel = state.cameraStream.aircraftModel,
+                availableSources = state.cameraStream.availableSources.joinToString { source ->
+                    "${source.indexName}:${source.label}"
+                },
+                currentSourceName = state.cameraStream.currentSourceName,
+                currentCameraIndexName = state.cameraStream.currentCameraIndexName,
+                currentCameraIndexValue = state.cameraStream.currentCameraIndexValue,
+                currentLensSourceName = state.cameraStream.currentLensSourceName,
+                surfaceReady = state.cameraStream.isSurfaceReady,
+                streamDisplaying = state.cameraStream.isStreamDisplaying,
+                status = state.cameraStream.status.name,
+                statusMessage = state.cameraStream.statusMessage,
+                warningMessage = state.cameraStream.warningMessage,
+                errorMessage = state.cameraStream.errorMessage,
+                frameListening = state.cameraStream.frameListening,
+                rawStreamListening = state.cameraStream.rawStreamListening,
+                lastFrameInfo = state.cameraStream.lastFrameInfo,
+                updatedAt = state.cameraStream.updatedAt,
+            ),
         )
+    }
+
+    private fun currentDjiMissionState(): MissionExecutionSnapshot {
+        return runCatching {
+            DjiWaypointMissionManager.missionState.value
+        }.getOrElse { throwable ->
+            MissionExecutionSnapshot(
+                lastDjiWaypointError = throwable.message ?: "DJI waypoint mission state unavailable",
+                lastDjiWaypointErrorHint = "JVM 单测或非 DJI runtime 可能无法初始化 DJI waypoint listener；真机运行时请查看 Developer Panel 日志。",
+            )
+        }
+    }
+
+    fun onCameraPreviewEntered() {
+        val state = uiState.value
+        if (state.activeBackend != DroneBackend.DJI) {
+            return
+        }
+        DeveloperLogStore.info(TAG, "进入 DJI 视频预览区域")
+        runCatching {
+            AircraftCameraStreamManager.init("ControlScreen entered")
+            AircraftCameraStreamManager.refreshAvailableCameras("ControlScreen entered")
+        }.onFailure { throwable ->
+            DeveloperLogStore.warn(TAG, "DJI 视频预览初始化失败", throwable.message)
+            pushStatus("视频预览初始化失败：${throwable.message ?: "未知错误"}")
+        }
+    }
+
+    fun onCameraPreviewExited() {
+        if (uiState.value.activeBackend == DroneBackend.DJI) {
+            releaseCameraStream("ControlScreen exited")
+        }
+    }
+
+    fun onCameraSurfaceAvailable(surface: Surface, width: Int, height: Int) {
+        if (uiState.value.activeBackend != DroneBackend.DJI) {
+            return
+        }
+        runCatching {
+            AircraftCameraStreamManager.bindSurface(surface, width, height)
+        }.onFailure { throwable ->
+            DeveloperLogStore.warn(TAG, "DJI 视频 Surface 绑定失败", throwable.message)
+        }
+    }
+
+    fun onCameraSurfaceDestroyed(surface: Surface) {
+        runCatching {
+            AircraftCameraStreamManager.unbindSurface(surface)
+        }.onFailure { throwable ->
+            DeveloperLogStore.warn(TAG, "DJI 视频 Surface 解绑失败", throwable.message)
+        }
+    }
+
+    fun refreshCameraSources() {
+        if (uiState.value.activeBackend != DroneBackend.DJI) {
+            return
+        }
+        runCatching {
+            AircraftCameraStreamManager.refreshAvailableCameras("manual refresh")
+        }.onSuccess {
+            pushStatus("视频源已刷新")
+        }.onFailure { throwable ->
+            val message = throwable.message ?: "未知错误"
+            DeveloperLogStore.warn(TAG, "手动刷新 DJI 视频源失败", message)
+            pushStatus("视频源刷新失败：$message")
+        }
+    }
+
+    fun switchCameraSource(indexName: String) {
+        if (uiState.value.activeBackend != DroneBackend.DJI) {
+            return
+        }
+        runCatching {
+            AircraftCameraStreamManager.switchCamera(indexName)
+        }.onFailure { throwable ->
+            val message = throwable.message ?: "未知错误"
+            DeveloperLogStore.warn(TAG, "手动切换 DJI 视频源失败", "cameraIndex=$indexName, error=$message")
+            pushStatus("视频源切换失败：$message")
+        }
     }
 
     private fun UavUiState.withDisplayedMissions(

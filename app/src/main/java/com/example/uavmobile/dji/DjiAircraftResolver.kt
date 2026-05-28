@@ -71,8 +71,8 @@ object DjiAircraftResolver {
             DjiAircraftFamily.MATRICE_4_SERIES -> DjiAircraftResolution.Supported(
                 requestedFamily = selectedAircraftFamily,
                 resolvedProductTypeName = null,
-                resolvedAircraft = DjiWaylineAircraftType.EA220,
-                message = "Using manual DJI aircraft selection Matrice 4 Series -> WaylineDroneType.EA220",
+                resolvedAircraft = DjiWaylineAircraftType.WA345,
+                message = "Using manual DJI aircraft selection Matrice 4 Series -> WaylineDroneType.WA345",
             )
         }
     }

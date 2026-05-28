@@ -46,6 +46,7 @@ object DjiDroneController : DroneController {
     override suspend fun disconnect(): ActionResult {
         Log.i(TAG, "DJI disconnect requested; stopping local connection monitor")
         DjiConnectionManager.stopConnectionMonitor("DjiDroneController.disconnect")
+        ObstacleAvoidanceSafetyManager.stopMissionMonitoring("DjiDroneController.disconnect")
         return ActionResult(
             success = true,
             message = "DJI SDK 生命周期仍由系统管理，已停止本地飞机连接监视器",

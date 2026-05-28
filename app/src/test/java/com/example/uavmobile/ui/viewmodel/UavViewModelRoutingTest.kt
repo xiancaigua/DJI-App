@@ -10,14 +10,20 @@ import com.example.uavmobile.data.model.ActionResult
 import com.example.uavmobile.data.model.ConnectionConfig
 import com.example.uavmobile.data.repository.UavRepository
 import com.example.uavmobile.dji.DjiConnectionManager
+import com.example.uavmobile.dji.AircraftCameraStreamManager
+import com.example.uavmobile.dji.DjiCameraFrameInfo
+import com.example.uavmobile.dji.DjiCameraIndex
+import com.example.uavmobile.dji.DjiCameraStreamClient
 import com.example.uavmobile.dji.DjiProductConnectionReader
+import com.example.uavmobile.dji.DjiRawStreamInfo
 import com.example.uavmobile.dji.DjiPermissionSnapshot
 import dji.sdk.keyvalue.value.product.ProductType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -28,6 +34,7 @@ class UavViewModelRoutingTest {
 
     @After
     fun tearDown() {
+        AircraftCameraStreamManager.resetForTest()
         DjiConnectionManager.resetForTest()
     }
 
@@ -40,26 +47,30 @@ class UavViewModelRoutingTest {
             selfDroneController = selfController,
             djiDroneController = djiController,
         )
+        try {
 
-        viewModel.onActiveBackendChanged(DroneBackend.SELF_ROS)
-        viewModel.selectMission("ros-mission-1")
+            viewModel.onActiveBackendChanged(DroneBackend.SELF_ROS)
+            viewModel.selectMission("ros-mission-1")
 
-        viewModel.uploadDraftMission()
-        viewModel.startMission()
-        viewModel.pauseMission()
-        viewModel.resumeMission()
-        viewModel.rtl()
-        viewModel.land()
-        advanceUntilIdle()
+            viewModel.uploadDraftMission()
+            viewModel.startMission()
+            viewModel.pauseMission()
+            viewModel.resumeMission()
+            viewModel.rtl()
+            viewModel.land()
+            runCurrent()
 
-        assertEquals(1, selfController.uploadMissionCalls)
-        assertEquals(1, selfController.startMissionCalls)
-        assertEquals(1, selfController.pauseMissionCalls)
-        assertEquals(1, selfController.resumeMissionCalls)
-        assertEquals(1, selfController.returnHomeCalls)
-        assertEquals(1, selfController.landCalls)
-        assertEquals(0, djiController.uploadMissionCalls)
-        assertEquals(0, djiController.startMissionCalls)
+            assertEquals(1, selfController.uploadMissionCalls)
+            assertEquals(1, selfController.startMissionCalls)
+            assertEquals(1, selfController.pauseMissionCalls)
+            assertEquals(1, selfController.resumeMissionCalls)
+            assertEquals(1, selfController.returnHomeCalls)
+            assertEquals(1, selfController.landCalls)
+            assertEquals(0, djiController.uploadMissionCalls)
+            assertEquals(0, djiController.startMissionCalls)
+        } finally {
+            viewModel.clearForTest()
+        }
     }
 
     @Test
@@ -73,33 +84,92 @@ class UavViewModelRoutingTest {
             selfDroneController = selfController,
             djiDroneController = djiController,
         )
+        try {
 
-        viewModel.onDjiPermissionStateChanged(
-            DjiPermissionSnapshot(
-                requiredPermissions = listOf("android.permission.ACCESS_FINE_LOCATION"),
-                missingPermissions = emptyList(),
-            ),
+            viewModel.onDjiPermissionStateChanged(
+                DjiPermissionSnapshot(
+                    requiredPermissions = listOf("android.permission.ACCESS_FINE_LOCATION"),
+                    missingPermissions = emptyList(),
+                ),
+            )
+            viewModel.onActiveBackendChanged(DroneBackend.DJI)
+            viewModel.onSelectedDjiAircraftFamilyChanged(DjiAircraftFamily.M400)
+            viewModel.selectMission("dji-mission-1")
+
+            viewModel.uploadDraftMission()
+            viewModel.startMission()
+            viewModel.pauseMission()
+            viewModel.stopMission()
+            viewModel.rtl()
+            viewModel.land()
+            runCurrent()
+
+            assertEquals(0, selfController.uploadMissionCalls)
+            assertEquals(1, djiController.uploadMissionCalls)
+            assertEquals(1, djiController.startMissionCalls)
+            assertEquals(1, djiController.pauseMissionCalls)
+            assertEquals(1, djiController.stopMissionCalls)
+            assertEquals(1, djiController.returnHomeCalls)
+            assertEquals(1, djiController.landCalls)
+            assertEquals(DjiAircraftFamily.M400, djiController.lastSelectedDjiAircraftFamily)
+        } finally {
+            viewModel.clearForTest()
+        }
+    }
+
+    @Test
+    fun `entering dji control page initializes camera stream`() = runTest {
+        val fakeCamera = FakeCameraStreamClient(
+            productTypeName = "DJI_MATRICE_400",
+            indexes = listOf(DjiCameraIndex("FPV", 7)),
+            sourceRanges = mapOf("FPV" to listOf("DEFAULT_CAMERA")),
         )
-        viewModel.onActiveBackendChanged(DroneBackend.DJI)
-        viewModel.onSelectedDjiAircraftFamilyChanged(DjiAircraftFamily.M400)
-        viewModel.selectMission("dji-mission-1")
+        AircraftCameraStreamManager.setClientForTest(fakeCamera)
+        val viewModel = UavViewModel(
+            repository = UavRepository(),
+            selfDroneController = FakeDroneController("self"),
+            djiDroneController = FakeDroneController("dji"),
+        )
+        try {
+            viewModel.onActiveBackendChanged(DroneBackend.DJI)
+            viewModel.onCameraPreviewEntered()
+            runCurrent()
 
-        viewModel.uploadDraftMission()
-        viewModel.startMission()
-        viewModel.pauseMission()
-        viewModel.stopMission()
-        viewModel.rtl()
-        viewModel.land()
-        advanceUntilIdle()
+            assertEquals(1, fakeCamera.initCalls)
+            assertEquals(1, fakeCamera.listenerAdds)
+            assertEquals("FPV", viewModel.uiState.value.cameraStream.currentCameraIndexName)
+        } finally {
+            viewModel.clearForTest()
+        }
+    }
 
-        assertEquals(0, selfController.uploadMissionCalls)
-        assertEquals(1, djiController.uploadMissionCalls)
-        assertEquals(1, djiController.startMissionCalls)
-        assertEquals(1, djiController.pauseMissionCalls)
-        assertEquals(1, djiController.stopMissionCalls)
-        assertEquals(1, djiController.returnHomeCalls)
-        assertEquals(1, djiController.landCalls)
-        assertEquals(DjiAircraftFamily.M400, djiController.lastSelectedDjiAircraftFamily)
+    @Test
+    fun `dji start mission warns when video unavailable but does not block start`() = runTest {
+        DjiConnectionManager.setConnectionReaderForTest(FakeConnectionReader(connectionValue = true))
+        DjiConnectionManager.refreshFromKeyManager("routing test")
+        val djiController = FakeDroneController("dji")
+        val viewModel = UavViewModel(
+            repository = UavRepository(),
+            selfDroneController = FakeDroneController("self"),
+            djiDroneController = djiController,
+        )
+        try {
+            viewModel.onDjiPermissionStateChanged(
+                DjiPermissionSnapshot(
+                    requiredPermissions = listOf("android.permission.ACCESS_FINE_LOCATION"),
+                    missingPermissions = emptyList(),
+                ),
+            )
+            viewModel.onActiveBackendChanged(DroneBackend.DJI)
+
+            viewModel.startMission()
+            runCurrent()
+
+            assertEquals(1, djiController.startMissionCalls)
+            assertTrue(viewModel.uiState.value.cameraStream.warningMessage.contains("视频"))
+        } finally {
+            viewModel.clearForTest()
+        }
     }
 
     private class FakeDroneController(
@@ -181,5 +251,55 @@ class UavViewModelRoutingTest {
         override fun listenConnection(holder: Any, getOnce: Boolean, onValueChange: (Boolean?) -> Unit) = Unit
 
         override fun cancelListen(holder: Any) = Unit
+    }
+
+    private class FakeCameraStreamClient(
+        private val productTypeName: String,
+        private val indexes: List<DjiCameraIndex>,
+        private val sourceRanges: Map<String, List<String>>,
+    ) : DjiCameraStreamClient {
+        var initCalls = 0
+        var listenerAdds = 0
+
+        override fun init() {
+            initCalls += 1
+        }
+
+        override fun release() = Unit
+
+        override fun addAvailableCameraUpdatedListener(callback: (List<DjiCameraIndex>) -> Unit) {
+            listenerAdds += 1
+        }
+
+        override fun removeAvailableCameraUpdatedListener() = Unit
+
+        override fun refreshAvailableCameraIndexes(): List<DjiCameraIndex> = indexes
+
+        override fun readProductTypeName(): String = productTypeName
+
+        override fun readVideoSourceRange(cameraIndex: DjiCameraIndex): List<String> {
+            return sourceRanges[cameraIndex.name].orEmpty()
+        }
+
+        override fun setVideoSource(cameraIndex: DjiCameraIndex, sourceName: String): Boolean = true
+
+        override fun bindSurface(cameraIndex: DjiCameraIndex, surface: Any, width: Int, height: Int) = Unit
+
+        override fun unbindSurface(surface: Any) = Unit
+
+        override fun startFrameListening(
+            cameraIndex: DjiCameraIndex,
+            formatName: String,
+            callback: (DjiCameraFrameInfo) -> Unit,
+        ) = Unit
+
+        override fun stopFrameListening() = Unit
+
+        override fun startRawStreamListening(
+            cameraIndex: DjiCameraIndex,
+            callback: (DjiRawStreamInfo) -> Unit,
+        ) = Unit
+
+        override fun stopRawStreamListening() = Unit
     }
 }

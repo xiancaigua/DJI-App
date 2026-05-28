@@ -194,7 +194,61 @@ Relevant files:
 
 The old long-press entry was removed. Do not document or rely on it.
 
-## 10. Diagnostics and waypoint import
+## 10. DJI waypoint obstacle-avoidance safety
+
+The app has a DJI waypoint/KMZ safety layer for obstacle avoidance.
+
+Core rule:
+
+- Describe this feature as: the app configures and checks DJI aircraft platform perception/obstacle-avoidance capability through DJI MSDK before route execution, listens to obstacle data during execution, and requests pause/alerts on abnormal distance.
+- Do not describe it as app-side autonomous obstacle avoidance or app-side path planning.
+
+Main files:
+
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\dji\ObstacleAvoidanceSafetyManager.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\dji\DjiWaypointMissionManager.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\core\ObstacleAvoidanceModels.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\debug\DeveloperSnapshot.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\ControlScreen.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\DeveloperPanelScreen.kt`
+
+MSDK APIs verified locally for SDK 5.17.0:
+
+- `PerceptionManager.getInstance()`
+- `setObstacleAvoidanceType` / `getObstacleAvoidanceType`
+- `setObstacleAvoidanceEnabled` / `getObstacleAvoidanceEnabled`
+- `setObstacleAvoidanceWarningDistance` / `getObstacleAvoidanceWarningDistance`
+- `setObstacleAvoidanceBrakingDistance` / `getObstacleAvoidanceBrakingDistance`
+- `addObstacleDataListener` / `removeObstacleDataListener`
+
+Mission-start invariant:
+
+- `DjiWaypointMissionManager.startMission()` must run existing aircraft/location/Home prechecks first, then `ObstacleAvoidanceSafetyManager.prepareForWaypointMission(...)`, then DJI `startMission(...)`.
+- If mode is `CLOSE`, try to set `BRAKE`.
+- If final mode is not `BRAKE` or `BYPASS`, block route start.
+- Direction switch/distance unsupported failures are warnings only when main mode is safe.
+
+Runtime invariant:
+
+- `BRAKE` is the default conservative policy.
+- `BYPASS` must not be enabled by default.
+- Obstacle listener converts DJI millimeter distances to meters.
+- Consecutive emergency readings below threshold can request DJI `pauseMission()`, with debounce.
+- Listener cleanup is required on mission finish/stop/failure/interruption/disconnect.
+
+Diagnostics:
+
+- Control page shows obstacle mode, direction switches, nearest obstacle distance, safety state, listener state, and latest message.
+- Developer Panel shows `DJI Obstacle Avoidance Diagnostics`.
+- Developer snapshot summary includes the same diagnostics for copy/paste debugging.
+
+Tests:
+
+- `ObstacleAvoidanceSafetyManagerTest` covers `CLOSE -> BRAKE`, hard block on failed safe mode, partial unsupported warnings, distance conversion, emergency pause debounce, and listener cleanup.
+- `DeveloperSnapshotTest` covers obstacle diagnostics summary output.
+- `UavViewModelRoutingTest` uses `runCurrent()` and `clearForTest()` so the DJI polling loop does not make JVM unit tests hang.
+
+## 11. Diagnostics and waypoint import
 
 Implemented diagnostics:
 
@@ -213,7 +267,7 @@ Relevant files:
 - `...\\ui\\viewmodel\\WaypointImportSupport.kt`
 - `...\\ui\\screen\\MissionScreen.kt`
 
-## 11. Documents worth checking before new work
+## 12. Documents worth checking before new work
 
 - `D:\ROS2Android\docs\android-msdk-integration.md`
 - `D:\ROS2Android\docs\android-app-developer-debug-guide-zh.md`
@@ -221,7 +275,7 @@ Relevant files:
 - `D:\ROS2Android\android-app\DJI-App\agents\MSDKDOCS\Docs\Android_API\cn\index.html`
 - `D:\ROS2Android\android-app\DJI-App\agents\MSDKDOCS\Docs\Android_API\en\index.html`
 
-## 12. Build command
+## 13. Build command
 
 Use:
 
@@ -229,3 +283,121 @@ Use:
 cd D:\ROS2Android\android-app\DJI-App
 .\gradlew.bat clean assembleDebug testDebugUnitTest
 ```
+
+## 14. Compact Compose UI pass
+
+Implemented on 2026-05-25.
+
+Purpose:
+
+- Make the Android Compose UI denser and easier to scan on DJI RC / tablet-like screens.
+- Keep this as a layout-only change: no DJI, ROS, connection, waypoint, or obstacle-avoidance business logic should change.
+
+Main files:
+
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\CompactInfoGrid.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\DashboardScreen.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\MissionScreen.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\ConnectionScreen.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\ControlScreen.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\EventScreen.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\UavApp.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\DeveloperPanelScreen.kt`
+
+Implementation notes:
+
+- `CompactInfoGrid` / `CompactInfoItem` is the shared UI helper for responsive compact label/value cells.
+- Dashboard core metrics now use a compact grid that can place up to four items per row when width allows.
+- Mission waypoint editing places latitude / longitude / altitude in one row on wide layouts, with a fallback for narrow screens; hold time and yaw share one row.
+- Connection and Control status cards group diagnostic fields into compact grids instead of one text line per field.
+- Event cards collapse metadata into one single-line row with ellipsis.
+- Top app bar now uses two compact lines and ellipsis for long status text.
+
+Important invariants:
+
+- Top-right status semantics were not changed. `DJI 飞机已连接` / aircraft-connected wording must still only represent a real aircraft/product connection.
+- UI compactness must not reduce safety-critical button availability or make DJI SDK calls from UI composables.
+
+Verification:
+
+```powershell
+cd D:\ROS2Android\android-app\DJI-App
+.\gradlew.bat clean assembleDebug testDebugUnitTest --no-daemon
+```
+
+Result: passed on 2026-05-25.
+
+Device validation:
+
+- `app-debug.apk` installed and `com.example.uavmobile/.MainActivity` was launched once on DJI RC Plus 2 before the device went offline due to power.
+- Full visual walkthrough on the physical device was not completed because the device was powered down.
+- Launch log exposed a separate runtime issue unrelated to compact UI: `NoClassDefFoundError` for `dji.v5.manager.aircraft.waypoint3.WaylineExecutingInfoListener` from `DjiWaypointMissionManager`. Future DJI waypoint debugging should resolve that SDK/runtime class mismatch before judging UI or mission behavior on device.
+
+## 15. DJI camera stream preview
+
+Implemented on 2026-05-26.
+
+Purpose:
+
+- Add real-time aircraft video return/display capability for DJI MSDK V5 without changing mission upload/start/pause/stop or obstacle-avoidance business logic.
+- Use DJI platform video sources through `MediaDataCenter.getInstance().getCameraStreamManager()` and `putCameraStreamSurface(...)`.
+- This is for pilot takeover assistance, waypoint mission supervision, and flight situational awareness. It is not AI recognition, app-side video decoding, livestream forwarding, or autonomous obstacle avoidance.
+
+Main files:
+
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\core\CameraStreamModels.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\dji\AircraftCameraStreamManager.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\viewmodel\UavViewModel.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\ControlScreen.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\debug\DeveloperSnapshot.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\main\java\com\example\uavmobile\ui\screen\DeveloperPanelScreen.kt`
+- `D:\ROS2Android\android-app\DJI-App\app\src\test\java\com\example\uavmobile\dji\AircraftCameraStreamManagerTest.kt`
+
+Implementation notes:
+
+- `CameraStreamModels.kt` is SDK-neutral. UI and developer snapshot do not expose DJI SDK classes.
+- `AircraftCameraStreamManager` wraps DJI `ICameraStreamManager`, available camera listener, Surface binding/unbinding, source switching, and reserved frame/raw stream listener entry points.
+- `ControlScreen` adds a DJI-only "机身摄像头回传" card with a TextureView-backed preview, current source, `cameraIndex`, aircraft model, video status, refresh, and manual switch.
+- `UavViewModel` owns preview lifecycle callbacks: enter/exit preview, surface ready/destroyed, refresh sources, and switch source. UI composables still do not call DJI SDK directly.
+- Developer Panel and copied diagnostic summary now include `DJI Camera Stream Diagnostics`.
+
+Default source rules:
+
+- Vision Assist is never selected as the mission supervision default source.
+- Matrice 4 / Matrice 4D / M4T targets prefer non-Vision integrated gimbal/main camera, with `WIDE_CAMERA` preferred when `KeyCameraVideoStreamSourceRange` is readable.
+- Matrice 400 targets prefer `ComponentIndexType.FPV`; if FPV cannot be identified, use the first non-Vision source and log a warning that field confirmation is required.
+- Unknown aircraft use the first non-Vision source and warn that `cameraIndex` mapping requires real-device confirmation.
+- If only Vision Assist is available, the UI reports no mission-supervision video source instead of using it.
+
+Lifecycle and failure behavior:
+
+- Entering DJI Control page initializes the stream module, registers `addAvailableCameraUpdatedListener`, refreshes available sources, and selects a default.
+- TextureView `SurfaceTexture` creation/change wraps an Android `Surface` and binds through `putCameraStreamSurface(cameraIndex, surface, width, height, CENTER_CROP)`.
+- Surface destroy, page exit, backend switch away from DJI, disconnect, and ViewModel clear release the Surface/listeners and reserved frame/raw stream listeners.
+- Video unavailable or display failure logs warnings and updates UI; it does not block mission start. `startMission()` only emits a warning if there is no usable/displaying video.
+
+Tests:
+
+- `AircraftCameraStreamManagerTest` covers M4T wide/default selection, M400 FPV selection, unknown fallback, Vision Assist exclusion, Surface bind/unbind, switch failure restore, and opt-in frame/raw listeners.
+- `UavViewModelRoutingTest` covers DJI Control page preview init and confirms missing video warns but does not block `startMission`.
+- `DeveloperSnapshotTest` covers copied camera diagnostics.
+
+Verification:
+
+```powershell
+cd D:\ROS2Android\android-app\DJI-App
+.\gradlew.bat clean assembleDebug testDebugUnitTest --no-daemon --stacktrace
+```
+
+Result: passed on 2026-05-26.
+
+Real-device follow-up:
+
+- 2026-05-26 RC Plus 2 validation installed and launched `app-debug.apk`; the app stayed foreground with no `FATAL EXCEPTION`.
+- Current pulled checkout only has `sdk.dir` in `local.properties`, so generated BuildConfig was `APPLICATION_ID=com.example.uavmobile` and `DJI_ENABLE_RUNTIME=false`; live DJI registration/ProductKey/camera stream could not be validated until App Key/package/runtime config is restored.
+- The first `SurfaceView` preview caused a full-screen black overlay on RC Plus 2. It was replaced with `TextureView`; after reinstall, the full-window black overlay was gone and the Control page showed only the preview pane black with `Surface=READY`, `可用源=0`, `显示=OFF`, `暂无可用视频源`.
+- Follow-up validation found the camera card still consumed too much of the Control page and could hide aircraft/obstacle status. Keep `ObstacleAvoidanceStatusCard` before `AircraftCameraPreviewCard`, keep Control page bottom padding for the bottom navigation bar, and keep the camera card compact: wide layouts use a 128dp TextureView preview beside the camera diagnostics grid instead of a full-width 16:9 block.
+- After reinstall on RC Plus 2, aircraft/obstacle safety status was visible first, and the camera preview appeared below in a compact side-by-side layout without covering state text.
+- On DJI RC Plus 2 with M4T/M400 connected and DJI runtime enabled, still verify: available camera list callbacks, actual `cameraIndex` labels, M4T wide/zoom/thermal mapping, M400 FPV mapping with no payload, live image display, manual switching, disconnect/reconnect, background/foreground release/rebind.
+- If M4T/M400 camera mapping differs, adjust only `AircraftCameraStreamManager.selectDefaultCameraIndex(...)` and label/source mapping, not mission execution flow.
+- Separate device-side blocker still appears in logs: `NoClassDefFoundError` for `dji.v5.manager.aircraft.waypoint3.WaylineExecutingInfoListener`. It is caught/no-crash in this validation, but real waypoint execution should not be judged until that SDK/runtime class mismatch is resolved.

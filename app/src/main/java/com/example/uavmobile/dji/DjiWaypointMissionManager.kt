@@ -7,6 +7,8 @@ import com.example.uavmobile.core.hasValidCoordinates
 import com.example.uavmobile.core.hasValidHomeCoordinates
 import com.example.uavmobile.core.MissionExecutionSnapshot
 import com.example.uavmobile.core.MissionExecutionState
+import com.example.uavmobile.core.ObstacleAvoidanceSnapshot
+import com.example.uavmobile.core.ObstacleDirection
 import com.example.uavmobile.core.PreparedMission
 import com.example.uavmobile.core.Waypoint
 import com.example.uavmobile.data.model.ActionResult
@@ -82,13 +84,14 @@ object DjiWaypointMissionManager {
                 state = MissionExecutionState.RUNNING,
                 currentWaypointIndex = info.currentWaypointIndex,
                 progress = normalizedProgress,
-                message = "正在执行航点 ${info.currentWaypointIndex + 1}",
+                message = "正在执行航点 ${info.currentWaypointIndex + 1}，${obstacleAvoidanceBrief()}",
                 lastDjiWaypointAction = "missionProgress",
                 sdkMissionExecuteState = if (_missionState.value.sdkMissionExecuteState.isBlank()) {
                     "EXECUTING"
                 } else {
                     _missionState.value.sdkMissionExecuteState
                 },
+                obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
             )
         }
 
@@ -96,17 +99,25 @@ object DjiWaypointMissionManager {
             if (error != null) {
                 val errorText = DjiErrorFormatter.describe(error)
                 val interruptionDiagnostics = buildInterruptionDiagnostics()
+                val obstacleSnapshot = ObstacleAvoidanceSafetyManager.safetyState.value
+                val interruptedByObstacle = obstacleSnapshot.appPauseRequested
+                ObstacleAvoidanceSafetyManager.stopMissionMonitoring("mission interrupted reason")
                 DeveloperLogStore.error(TAG, "DJI 任务中断", errorText)
                 DeveloperLogStore.warn(TAG, "DJI 中断瞬间快照", interruptionDiagnostics)
                 _missionState.value = _missionState.value.copy(
                     state = MissionExecutionState.FAILED,
-                    message = "任务中断：$errorText",
+                    message = if (interruptedByObstacle) {
+                        "因近距离障碍物暂停任务：$errorText"
+                    } else {
+                        "任务中断：$errorText"
+                    },
                     lastDjiWaypointAction = "missionInterrupted",
                     lastDjiWaypointActionSuccess = false,
                     lastDjiWaypointError = errorText,
                     lastDjiWaypointErrorHint = buildWaypointErrorHint(errorText),
                     lastInterruptionReason = errorText,
                     lastInterruptionDiagnostics = interruptionDiagnostics,
+                    obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                 )
             }
         }
@@ -119,7 +130,8 @@ object DjiWaypointMissionManager {
                     _missionState.value = _missionState.value.copy(
                         state = MissionExecutionState.PREPARING,
                         sdkMissionExecuteState = state.name,
-                        message = "飞机正在准备任务",
+                        message = "飞机正在准备任务，${obstacleAvoidanceBrief()}",
+                        obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                     )
                 }
 
@@ -128,6 +140,7 @@ object DjiWaypointMissionManager {
                         state = MissionExecutionState.UPLOADED,
                         sdkMissionExecuteState = state.name,
                         message = "飞机任务已就绪，等待开始",
+                        obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                     )
                 }
 
@@ -138,26 +151,44 @@ object DjiWaypointMissionManager {
                         state = MissionExecutionState.RUNNING,
                         sdkMissionExecuteState = state.name,
                         message = if (state == WaypointMissionExecuteState.ENTER_WAYLINE) {
-                            "飞机正在进入航线"
+                            "飞机正在进入航线，${obstacleAvoidanceBrief()}"
                         } else {
-                            _missionState.value.message.ifBlank { "飞机正在执行任务" }
+                            obstacleExecutingMessage()
                         },
+                        obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                     )
                 }
 
                 WaypointMissionExecuteState.INTERRUPTED -> {
+                    val obstacleSnapshot = ObstacleAvoidanceSafetyManager.safetyState.value
+                    val interruptedByObstacle = obstacleSnapshot.appPauseRequested
+                    ObstacleAvoidanceSafetyManager.stopMissionMonitoring("mission interrupted")
                     _missionState.value = _missionState.value.copy(
                         state = MissionExecutionState.FAILED,
                         sdkMissionExecuteState = state.name,
-                        message = "DJI 任务已中断",
+                        message = if (interruptedByObstacle) {
+                            "因近距离障碍物暂停任务"
+                        } else {
+                            "DJI 任务已中断"
+                        },
                         lastDjiWaypointAction = "missionStateUpdate",
                         lastDjiWaypointActionSuccess = false,
-                        lastDjiWaypointError = "WaypointMissionExecuteState=INTERRUPTED",
-                        lastDjiWaypointErrorHint = "请检查飞行模式、电机状态、Home 点、遥控器状态和 DJI 最近日志。",
+                        lastDjiWaypointError = if (interruptedByObstacle) {
+                            "WaypointMissionExecuteState=INTERRUPTED by obstacle safety"
+                        } else {
+                            "WaypointMissionExecuteState=INTERRUPTED"
+                        },
+                        lastDjiWaypointErrorHint = if (interruptedByObstacle) {
+                            "App 已因近距离障碍物请求暂停航线，请确认现场环境、飞机悬停状态和 DJI Pilot 2 感知告警。"
+                        } else {
+                            "请检查飞行模式、电机状态、Home 点、遥控器状态和 DJI 最近日志。"
+                        },
+                        obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                     )
                 }
 
                 WaypointMissionExecuteState.FINISHED -> {
+                    ObstacleAvoidanceSafetyManager.stopMissionMonitoring("mission finished")
                     val waypointCount = _missionState.value.waypointCount.coerceAtLeast(1)
                     _missionState.value = _missionState.value.copy(
                         state = MissionExecutionState.FINISHED,
@@ -167,6 +198,7 @@ object DjiWaypointMissionManager {
                         message = "DJI 任务已完成",
                         lastDjiWaypointAction = "missionStateUpdate",
                         lastDjiWaypointActionSuccess = true,
+                        obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                     )
                 }
 
@@ -190,6 +222,7 @@ object DjiWaypointMissionManager {
                             WaypointMissionExecuteState.UNKNOWN -> "任务状态未知"
                             else -> _missionState.value.message
                         },
+                        obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                     )
                 }
             }
@@ -452,6 +485,32 @@ object DjiWaypointMissionManager {
             )
         }
         val preflightWarnings = buildMissionStartWarnings(aircraftState)
+        val obstaclePrepareResult = ObstacleAvoidanceSafetyManager.prepareForWaypointMission(
+            missionId = mission.missionId,
+            missionState = _missionState.value.sdkMissionExecuteState.ifBlank { _missionState.value.state.name },
+        )
+        _missionState.value = _missionState.value.copy(
+            obstacleAvoidance = obstaclePrepareResult.snapshot,
+        )
+        if (!obstaclePrepareResult.success) {
+            return failResult(
+                message = obstaclePrepareResult.message,
+                action = "obstacleAvoidancePrecheck",
+            )
+        }
+        ObstacleAvoidanceSafetyManager.startMissionMonitoring(
+            missionId = mission.missionId,
+            isMissionExecuting = {
+                _missionState.value.state == MissionExecutionState.RUNNING &&
+                    _missionState.value.sdkMissionExecuteState in setOf(
+                        WaypointMissionExecuteState.ENTER_WAYLINE.name,
+                        WaypointMissionExecuteState.EXECUTING.name,
+                    )
+            },
+            pauseAction = { pauseMission() },
+            onSnapshotUpdate = ::updateObstacleAvoidanceSnapshot,
+        )
+        val obstacleWarnings = obstaclePrepareResult.warnings.joinToString(separator = "；")
         val selectedWaylineIds = SdkWaypointMissionManager.getInstance()
             .getAvailableWaylineIDs(mission.missionFileName)
             ?.ifEmpty { listOf(DEFAULT_WAYLINE_ID) }
@@ -465,14 +524,18 @@ object DjiWaypointMissionManager {
             lastDjiWaypointActionSuccess = null,
             lastDjiWaypointError = "",
             lastDjiWaypointErrorHint = "",
+            obstacleAvoidance = obstaclePrepareResult.snapshot,
         )
         DeveloperLogStore.info(
             TAG,
             "正在启动 DJI 任务",
-            "missionId=${mission.missionId}, waylineIds=$selectedWaylineIds, warnings=$preflightWarnings",
+            "missionId=${mission.missionId}, waylineIds=$selectedWaylineIds, warnings=$preflightWarnings, obstacleWarnings=$obstacleWarnings",
         )
         if (preflightWarnings.isNotBlank()) {
             DeveloperLogStore.warn(TAG, "DJI 启动前提醒", preflightWarnings)
+        }
+        if (obstacleWarnings.isNotBlank()) {
+            DeveloperLogStore.warn(TAG, "DJI 避障启动前提醒", obstacleWarnings)
         }
 
         return suspendCancellableCoroutine { continuation ->
@@ -492,15 +555,21 @@ object DjiWaypointMissionManager {
                                     append("；")
                                     append(preflightWarnings)
                                 }
+                                if (obstacleWarnings.isNotBlank()) {
+                                    append("；避障提醒：")
+                                    append(obstacleWarnings)
+                                }
                             },
                             lastDjiWaypointAction = "startMission",
                             lastDjiWaypointActionSuccess = true,
+                            obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                         )
                         DeveloperLogStore.info(TAG, "DJI 任务启动命令已发送", mission.missionId)
                         continuation.resume(ActionResult(true, "已启动 DJI 任务 ${mission.missionId}"))
                     }
 
                     override fun onFailure(error: IDJIError) {
+                        ObstacleAvoidanceSafetyManager.stopMissionMonitoring("startMission failed")
                         continuation.resume(
                             failResult(
                                 message = "DJI startMission 失败：${DjiErrorFormatter.describe(error)}",
@@ -532,6 +601,7 @@ object DjiWaypointMissionManager {
                         message = "DJI 任务已暂停",
                         lastDjiWaypointAction = "pauseMission",
                         lastDjiWaypointActionSuccess = true,
+                        obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
                     )
                     DeveloperLogStore.info(TAG, "DJI 任务已暂停")
                     continuation.resume(ActionResult(true, "已暂停 DJI 任务"))
@@ -565,21 +635,24 @@ object DjiWaypointMissionManager {
             SdkWaypointMissionManager.getInstance().stopMission(
                 mission.missionFileName,
                 object : CommonCallbacks.CompletionCallback {
-                    override fun onSuccess() {
-                        _missionState.value = _missionState.value.copy(
-                            state = MissionExecutionState.STOPPED,
-                            message = "DJI 任务 ${mission.missionId} 已停止",
-                            lastDjiWaypointAction = "stopMission",
-                            lastDjiWaypointActionSuccess = true,
-                        )
-                        DeveloperLogStore.info(TAG, "DJI 任务已停止", mission.missionId)
-                        continuation.resume(ActionResult(true, "已停止 DJI 任务 ${mission.missionId}"))
-                    }
+                override fun onSuccess() {
+                    ObstacleAvoidanceSafetyManager.stopMissionMonitoring("stopMission success")
+                    _missionState.value = _missionState.value.copy(
+                        state = MissionExecutionState.STOPPED,
+                        message = "DJI 任务 ${mission.missionId} 已停止",
+                        lastDjiWaypointAction = "stopMission",
+                        lastDjiWaypointActionSuccess = true,
+                        obstacleAvoidance = ObstacleAvoidanceSafetyManager.safetyState.value,
+                    )
+                    DeveloperLogStore.info(TAG, "DJI 任务已停止", mission.missionId)
+                    continuation.resume(ActionResult(true, "已停止 DJI 任务 ${mission.missionId}"))
+                }
 
-                    override fun onFailure(error: IDJIError) {
-                        continuation.resume(
-                            failResult(
-                                message = "DJI stopMission 失败：${DjiErrorFormatter.describe(error)}",
+                override fun onFailure(error: IDJIError) {
+                    ObstacleAvoidanceSafetyManager.stopMissionMonitoring("stopMission failed")
+                    continuation.resume(
+                        failResult(
+                            message = "DJI stopMission 失败：${DjiErrorFormatter.describe(error)}",
                                 action = "stopMission",
                             ),
                         )
@@ -644,6 +717,34 @@ object DjiWaypointMissionManager {
 
         SdkWaypointMissionManager.getInstance().addWaypointMissionExecuteStateListener(executeStateListener)
         executeStateListenerInstalled = true
+    }
+
+    private fun updateObstacleAvoidanceSnapshot(snapshot: ObstacleAvoidanceSnapshot) {
+        _missionState.value = _missionState.value.copy(
+            obstacleAvoidance = snapshot,
+            message = when {
+                snapshot.appPauseRequested -> snapshot.lastMessage
+                _missionState.value.state == MissionExecutionState.RUNNING -> obstacleExecutingMessage(snapshot)
+                else -> _missionState.value.message
+            },
+        )
+    }
+
+    private fun obstacleAvoidanceBrief(
+        snapshot: ObstacleAvoidanceSnapshot = ObstacleAvoidanceSafetyManager.safetyState.value,
+    ): String {
+        return "避障模式：${snapshot.mode.name}，安全状态：${snapshot.safetyState.name}"
+    }
+
+    private fun obstacleExecutingMessage(
+        snapshot: ObstacleAvoidanceSnapshot = ObstacleAvoidanceSafetyManager.safetyState.value,
+    ): String {
+        val nearest = snapshot.nearestObstacleDistanceMeters
+        return if (nearest == null || snapshot.nearestObstacleDirection == ObstacleDirection.UNKNOWN) {
+            "飞机正在执行任务，${obstacleAvoidanceBrief(snapshot)}"
+        } else {
+            "飞机正在执行任务，最近障碍物：${snapshot.nearestObstacleDirection.name} ${"%.1f".format(nearest)} m，安全状态：${snapshot.safetyState.name}"
+        }
     }
 
     private fun validateMissionStartPreconditions(

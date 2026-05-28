@@ -2,7 +2,6 @@ package com.example.uavmobile.ui.screen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -100,61 +99,53 @@ fun DashboardScreen(state: UavUiState) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("飞行总览", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(title = "模式", value = modeValue, modifier = Modifier.weight(1f))
-            MetricCard(title = "任务", value = missionStatusValue, modifier = Modifier.weight(1f))
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(title = "电量", value = batteryPercentValue, modifier = Modifier.weight(1f))
-            MetricCard(title = "电压", value = batteryVoltageValue, modifier = Modifier.weight(1f))
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(title = "GPS", value = gpsValue, modifier = Modifier.weight(1f))
-            MetricCard(title = "卫星", value = satelliteValue, modifier = Modifier.weight(1f))
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(title = "高度", value = altitudeValue, modifier = Modifier.weight(1f))
-            MetricCard(title = "速度", value = speedValue, modifier = Modifier.weight(1f))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("核心指标", fontWeight = FontWeight.SemiBold)
+                CompactInfoGrid(
+                    items = listOf(
+                        CompactInfoItem("模式", modeValue),
+                        CompactInfoItem("任务", missionStatusValue),
+                        CompactInfoItem("电量", batteryPercentValue),
+                        CompactInfoItem("电压", batteryVoltageValue),
+                        CompactInfoItem("GPS", gpsValue),
+                        CompactInfoItem("卫星", satelliteValue),
+                        CompactInfoItem("高度", altitudeValue),
+                        CompactInfoItem("速度", speedValue),
+                    ),
+                    minItemWidth = 112.dp,
+                )
+            }
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("位置", fontWeight = FontWeight.SemiBold)
-                Text("飞机：$aircraftPositionValue")
-                Text("Home 点：$homePositionValue")
-                Text("航向：$headingValue")
-                Text("任务进度：$missionProgressValue")
-                Text("移动会话：$sessionValue")
-                Text("后端状态：${currentAircraft.statusMessage.ifBlank { "无附加状态" }}")
+                CompactInfoGrid(
+                    items = listOf(
+                        CompactInfoItem("飞机", aircraftPositionValue),
+                        CompactInfoItem("Home 点", homePositionValue),
+                        CompactInfoItem("航向", headingValue),
+                        CompactInfoItem("任务进度", missionProgressValue),
+                        CompactInfoItem("移动会话", sessionValue),
+                        CompactInfoItem("后端状态", currentAircraft.statusMessage.ifBlank { "无附加状态" }),
+                    ),
+                    maxColumns = 3,
+                    minItemWidth = 150.dp,
+                    valueMaxLines = 2,
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun MetricCard(
-    title: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Card(modifier = modifier) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -50,8 +50,8 @@ fun DeveloperPanelScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(panelScrollState)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("开发者面板", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
@@ -173,6 +173,55 @@ fun DeveloperPanelScreen(
                     "monitorStartedAt：${snapshot.djiConnectionDiagnostics.monitorStartedAt.ifBlank { "无" }}",
                     "monitorTickCount：${snapshot.djiConnectionDiagnostics.monitorTickCount}",
                     "djiProductStatusMessage：${snapshot.djiConnectionDiagnostics.statusMessage.ifBlank { "无" }}",
+                ),
+            )
+
+            DeveloperSectionCard(
+                title = "DJI Obstacle Avoidance Diagnostics",
+                lines = listOf(
+                    "mode：${snapshot.djiObstacleAvoidanceDiagnostics.mode}",
+                    "horizontalSwitch：${snapshot.djiObstacleAvoidanceDiagnostics.horizontalSwitch}",
+                    "upwardSwitch：${snapshot.djiObstacleAvoidanceDiagnostics.upwardSwitch}",
+                    "downwardSwitch：${snapshot.djiObstacleAvoidanceDiagnostics.downwardSwitch}",
+                    "horizontalWarningDistance：${snapshot.djiObstacleAvoidanceDiagnostics.horizontalWarningDistanceMeters?.let { "%.1f m".format(it) } ?: "无"}",
+                    "upwardWarningDistance：${snapshot.djiObstacleAvoidanceDiagnostics.upwardWarningDistanceMeters?.let { "%.1f m".format(it) } ?: "无"}",
+                    "downwardWarningDistance：${snapshot.djiObstacleAvoidanceDiagnostics.downwardWarningDistanceMeters?.let { "%.1f m".format(it) } ?: "无"}",
+                    "horizontalBrakingDistance：${snapshot.djiObstacleAvoidanceDiagnostics.horizontalBrakingDistanceMeters?.let { "%.1f m".format(it) } ?: "无"}",
+                    "upwardBrakingDistance：${snapshot.djiObstacleAvoidanceDiagnostics.upwardBrakingDistanceMeters?.let { "%.1f m".format(it) } ?: "无"}",
+                    "downwardBrakingDistance：${snapshot.djiObstacleAvoidanceDiagnostics.downwardBrakingDistanceMeters?.let { "%.1f m".format(it) } ?: "无"}",
+                    "nearestObstacle：${snapshot.djiObstacleAvoidanceDiagnostics.nearestObstacleDistanceMeters?.let { "%.1f m".format(it) } ?: "无"}",
+                    "nearestDirection：${snapshot.djiObstacleAvoidanceDiagnostics.nearestObstacleDirection}",
+                    "safetyState：${snapshot.djiObstacleAvoidanceDiagnostics.safetyState}",
+                    "monitoringActive：${snapshot.djiObstacleAvoidanceDiagnostics.monitoringActive.toChineseBool()}",
+                    "lastPrepareSucceeded：${snapshot.djiObstacleAvoidanceDiagnostics.lastPrepareSucceeded?.toChineseBool() ?: "无"}",
+                    "lastPrepareWarning：${snapshot.djiObstacleAvoidanceDiagnostics.lastPrepareWarning.ifBlank { "无" }}",
+                    "lastPrepareError：${snapshot.djiObstacleAvoidanceDiagnostics.lastPrepareError.ifBlank { "无" }}",
+                    "appPauseRequested：${snapshot.djiObstacleAvoidanceDiagnostics.appPauseRequested.toChineseBool()}",
+                    "lastMessage：${snapshot.djiObstacleAvoidanceDiagnostics.lastMessage.ifBlank { "无" }}",
+                    "updatedAt：${snapshot.djiObstacleAvoidanceDiagnostics.updatedAt.ifBlank { "无" }}",
+                ),
+            )
+
+            DeveloperSectionCard(
+                title = "DJI Camera Stream Diagnostics",
+                lines = listOf(
+                    "aircraftModel：${snapshot.djiCameraStreamDiagnostics.aircraftModel.ifBlank { "UNKNOWN" }}",
+                    "availableSources：${snapshot.djiCameraStreamDiagnostics.availableSources.ifBlank { "无" }}",
+                    "currentSource：${snapshot.djiCameraStreamDiagnostics.currentSourceName.ifBlank { "无" }}",
+                    "cameraIndex：${snapshot.djiCameraStreamDiagnostics.currentCameraIndexName.ifBlank { "无" }}",
+                    "cameraIndexValue：${snapshot.djiCameraStreamDiagnostics.currentCameraIndexValue ?: "无"}",
+                    "lensSource：${snapshot.djiCameraStreamDiagnostics.currentLensSourceName.ifBlank { "无" }}",
+                    "surfaceReady：${snapshot.djiCameraStreamDiagnostics.surfaceReady.toChineseBool()}",
+                    "streamDisplaying：${snapshot.djiCameraStreamDiagnostics.streamDisplaying.toChineseBool()}",
+                    "status：${snapshot.djiCameraStreamDiagnostics.status.ifBlank { "无" }}",
+                    "statusMessage：${snapshot.djiCameraStreamDiagnostics.statusMessage.ifBlank { "无" }}",
+                    "warningMessage：${snapshot.djiCameraStreamDiagnostics.warningMessage.ifBlank { "无" }}",
+                    "errorMessage：${snapshot.djiCameraStreamDiagnostics.errorMessage.ifBlank { "无" }}",
+                    "frameListening：${snapshot.djiCameraStreamDiagnostics.frameListening.toChineseBool()}",
+                    "rawStreamListening：${snapshot.djiCameraStreamDiagnostics.rawStreamListening.toChineseBool()}",
+                    "lastFrameInfo：${snapshot.djiCameraStreamDiagnostics.lastFrameInfo.ifBlank { "无" }}",
+                    "updatedAt：${snapshot.djiCameraStreamDiagnostics.updatedAt.ifBlank { "无" }}",
+                    "说明：Vision Assist 不作为 Mission Flight 期间的主监管画面；M4T 默认接入内置一体化云台，M400 无额外负载时默认接入 FPV。",
                 ),
             )
 
@@ -315,10 +364,10 @@ fun DeveloperPanelScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier
-                        .padding(16.dp)
-                        .heightIn(max = 320.dp)
+                        .padding(12.dp)
+                        .heightIn(max = 300.dp)
                         .verticalScroll(logScrollState),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text("最近日志", fontWeight = FontWeight.SemiBold)
                     Text(
@@ -352,8 +401,8 @@ private fun DeveloperSectionCard(
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(title, fontWeight = FontWeight.SemiBold)
             lines.forEach { line ->

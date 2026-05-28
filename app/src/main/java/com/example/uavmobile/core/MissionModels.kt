@@ -54,6 +54,7 @@ data class MissionExecutionSnapshot(
     val lastDjiWaypointErrorHint: String = "",
     val lastInterruptionReason: String = "",
     val lastInterruptionDiagnostics: String = "",
+    val obstacleAvoidance: ObstacleAvoidanceSnapshot = ObstacleAvoidanceSnapshot(),
 )
 
 fun MissionExecutionSnapshot.toMissionSummaryOrNull(): MissionSummary? {

@@ -3,6 +3,7 @@ package com.example.uavmobile.ui.screen
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,8 +55,8 @@ fun MissionScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("任务规划", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
@@ -107,15 +108,15 @@ private fun MissionCanvasCard(state: UavUiState) {
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("任务画布", fontWeight = FontWeight.SemiBold)
             Box(modifier = Modifier.fillMaxWidth()) {
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(220.dp),
+                        .height(180.dp),
                 ) {
                     val parsedPoints = state.draftWaypoints.mapNotNull { draft ->
                         val lat = draft.lat.toDoubleOrNull() ?: return@mapNotNull null
@@ -223,8 +224,8 @@ private fun WaypointEditorCard(
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -236,37 +237,67 @@ private fun WaypointEditorCard(
                 }
             }
 
-            NumericField(
-                label = "纬度",
-                value = waypoint.lat,
-                onValueChange = { onWaypointChanged(waypoint.copy(lat = it)) },
-            )
-            NumericField(
-                label = "经度",
-                value = waypoint.lon,
-                onValueChange = { onWaypointChanged(waypoint.copy(lon = it)) },
-            )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                if (maxWidth >= 520.dp) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NumericField(
+                            label = "纬度",
+                            value = waypoint.lat,
+                            onValueChange = { onWaypointChanged(waypoint.copy(lat = it)) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        NumericField(
+                            label = "经度",
+                            value = waypoint.lon,
+                            onValueChange = { onWaypointChanged(waypoint.copy(lon = it)) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        NumericField(
+                            label = "高度 (m)",
+                            value = waypoint.altM,
+                            onValueChange = { onWaypointChanged(waypoint.copy(altM = it)) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NumericField(
+                                label = "纬度",
+                                value = waypoint.lat,
+                                onValueChange = { onWaypointChanged(waypoint.copy(lat = it)) },
+                                modifier = Modifier.weight(1f),
+                            )
+                            NumericField(
+                                label = "经度",
+                                value = waypoint.lon,
+                                onValueChange = { onWaypointChanged(waypoint.copy(lon = it)) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        NumericField(
+                            label = "高度 (m)",
+                            value = waypoint.altM,
+                            onValueChange = { onWaypointChanged(waypoint.copy(altM = it)) },
+                        )
+                    }
+                }
+            }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                NumericField(
-                    label = "高度 (m)",
-                    value = waypoint.altM,
-                    onValueChange = { onWaypointChanged(waypoint.copy(altM = it)) },
-                    modifier = Modifier.weight(1f),
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 NumericField(
                     label = "停留 (s)",
                     value = waypoint.holdSec,
                     onValueChange = { onWaypointChanged(waypoint.copy(holdSec = it)) },
                     modifier = Modifier.weight(1f),
                 )
+                NumericField(
+                    label = "航向 (°)",
+                    value = waypoint.yawDeg,
+                    onValueChange = { onWaypointChanged(waypoint.copy(yawDeg = it)) },
+                    modifier = Modifier.weight(1f),
+                )
             }
-
-            NumericField(
-                label = "航向 (°)",
-                value = waypoint.yawDeg,
-                onValueChange = { onWaypointChanged(waypoint.copy(yawDeg = it)) },
-            )
         }
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.uavmobile.data.model.MobileEvent
 
@@ -21,8 +22,8 @@ fun EventScreen(events: List<MobileEvent>) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -39,7 +40,7 @@ fun EventScreen(events: List<MobileEvent>) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "暂时没有事件。",
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(12.dp),
                     )
                 }
             }
@@ -47,14 +48,16 @@ fun EventScreen(events: List<MobileEvent>) {
             items(events) { event ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text("${event.level} · ${event.code}", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "${event.level} · ${event.code} · 错误码：${event.errorCode} · 任务：${event.relatedMissionId.ifBlank { "-" }} · ${event.receivedAt}",
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         Text(event.message)
-                        Text("错误码：${event.errorCode}")
-                        Text("任务：${event.relatedMissionId.ifBlank { "-" }}")
-                        Text("接收时间：${event.receivedAt}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
