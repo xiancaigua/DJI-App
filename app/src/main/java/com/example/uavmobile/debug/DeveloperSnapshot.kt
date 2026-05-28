@@ -44,8 +44,10 @@ data class DjiAircraftDiagnosticSnapshot(
 
 data class DjiConnectionDiagnosticSnapshot(
     val productConnected: Boolean = false,
+    val effectiveConnected: Boolean = false,
     val productType: String = "",
     val keyConnectionValue: Boolean? = null,
+    val callbackConnected: Boolean? = null,
     val lastConnectionSource: String = "",
     val lastRefreshReason: String = "",
     val lastRefreshSucceeded: Boolean = false,
@@ -100,7 +102,12 @@ data class DjiCameraStreamDiagnosticSnapshot(
 
 data class DeveloperSnapshot(
     val applicationId: String = "",
+    val applicationIdIsDefault: Boolean = false,
     val versionName: String = "",
+    val buildConfigDjiEnableRuntime: Boolean = false,
+    val djiAppKeyEmpty: Boolean = true,
+    val djiRuntimeSkipped: Boolean = false,
+    val djiRuntimeSkipReason: String = "",
     val activeBackendLabel: String = "",
     val selectedDjiAircraftFamilyLabel: String = "",
     val topStatusLabel: String = "",
@@ -114,10 +121,12 @@ data class DeveloperSnapshot(
     val djiSdkInitState: String = "",
     val djiSdkStatusMessage: String = "",
     val djiProductConnected: Boolean = false,
+    val djiEffectiveConnected: Boolean = false,
     val djiProductId: Int? = null,
     val djiProductTypeLabel: String = "",
     val djiProductStatusMessage: String = "",
     val djiKeyConnectionValue: Boolean? = null,
+    val djiLastCallbackConnected: Boolean? = null,
     val djiLastConnectionSource: String = "",
     val djiLastRefreshReason: String = "",
     val djiLastRefreshSucceeded: Boolean = false,
@@ -147,15 +156,21 @@ data class DeveloperSnapshot(
         return buildString {
             appendLine("诊断阅读说明：")
             appendLine("- 先看应用信息：applicationId 必须和 DJI 平台包名一致。")
+            appendLine("- 再看运行时配置：DJI_ENABLE_RUNTIME=false、App Key 为空、applicationId 默认值、runtime skipped 都会直接阻断初始化。")
             appendLine("- 再看 DJI 状态：sdkInitState 必须到 REGISTERED 才能上传或启动。")
-            appendLine("- 再看 DJI 连接诊断：SDK registered 不等于飞机已连接，KeyConnection=true 才能作为主动确认。")
-            appendLine("- 如果 callback 没来但 KeyConnection=true，以 KeyConnection 主动刷新结果为准。")
+            appendLine("- 再看 DJI 连接诊断：KeyConnection 最高优先；如果 callbackConnected=true 但 KeyConnection 还没同步，不要立即判离线。")
+            appendLine("- 如果 KeyConnection=false，即使 callback 之前报告已连接，也必须按离线处理。")
             appendLine("- 然后看 DJI 航点诊断里的 KMZ 路径、大小、机型映射、最后动作和最后错误。")
             appendLine("- 最后看最近日志，确认初始化、准备、上传、启动和失败回调顺序。")
             appendLine()
             appendLine("应用信息：")
             appendLine("applicationId: $applicationId")
+            appendLine("applicationIdIsDefault: ${applicationIdIsDefault.toChineseBool()}")
             appendLine("versionName: $versionName")
+            appendLine("buildConfig.DJI_ENABLE_RUNTIME: ${buildConfigDjiEnableRuntime.toChineseBool()}")
+            appendLine("djiAppKeyEmpty: ${djiAppKeyEmpty.toChineseBool()}")
+            appendLine("djiRuntimeSkipped: ${djiRuntimeSkipped.toChineseBool()}")
+            appendLine("djiRuntimeSkipReason: ${djiRuntimeSkipReason.ifBlank { "无" }}")
             appendLine("activeBackend: $activeBackendLabel")
             appendLine("selectedDjiAircraftFamily: $selectedDjiAircraftFamilyLabel")
             appendLine("topStatusLabel: ${topStatusLabel.ifBlank { "无" }}")
@@ -173,10 +188,12 @@ data class DeveloperSnapshot(
             appendLine("djiSdkInitState: $djiSdkInitState")
             appendLine("djiSdkStatusMessage: $djiSdkStatusMessage")
             appendLine("djiProductConnected: ${djiProductConnected.toChineseBool()}")
+            appendLine("djiEffectiveConnected: ${djiEffectiveConnected.toChineseBool()}")
             appendLine("djiProductId: ${djiProductId ?: "无"}")
             appendLine("djiProductType: ${djiProductTypeLabel.ifBlank { "无" }}")
             appendLine("djiProductStatusMessage: $djiProductStatusMessage")
             appendLine("djiKeyConnectionValue: ${djiKeyConnectionValue?.toChineseBool() ?: "无"}")
+            appendLine("djiLastCallbackConnected: ${djiLastCallbackConnected?.toChineseBool() ?: "无"}")
             appendLine("djiLastConnectionSource: ${djiLastConnectionSource.ifBlank { "无" }}")
             appendLine("djiLastRefreshReason: ${djiLastRefreshReason.ifBlank { "无" }}")
             appendLine("djiLastRefreshSucceeded: ${djiLastRefreshSucceeded.toChineseBool()}")
@@ -186,8 +203,10 @@ data class DeveloperSnapshot(
             appendLine()
             appendLine("DJI Connection Diagnostics：")
             appendLine("productConnected: ${djiConnectionDiagnostics.productConnected.toChineseBool()}")
+            appendLine("effectiveConnected: ${djiConnectionDiagnostics.effectiveConnected.toChineseBool()}")
             appendLine("productType: ${djiConnectionDiagnostics.productType.ifBlank { "无" }}")
             appendLine("keyConnectionValue: ${djiConnectionDiagnostics.keyConnectionValue?.toChineseBool() ?: "无"}")
+            appendLine("callbackConnected: ${djiConnectionDiagnostics.callbackConnected?.toChineseBool() ?: "无"}")
             appendLine("lastConnectionSource: ${djiConnectionDiagnostics.lastConnectionSource.ifBlank { "无" }}")
             appendLine("lastRefreshReason: ${djiConnectionDiagnostics.lastRefreshReason.ifBlank { "无" }}")
             appendLine("lastRefreshSucceeded: ${djiConnectionDiagnostics.lastRefreshSucceeded.toChineseBool()}")

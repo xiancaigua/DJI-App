@@ -176,6 +176,14 @@ object DjiDroneController : DroneController {
     }
 
     private fun ensureConnectedForMission(actionName: String): ActionResult? {
+        if (DjiMsdkManager.initState.value != DjiSdkInitState.REGISTERED) {
+            return ActionResult(
+                false,
+                "DJI SDK 尚未注册，不能执行 $actionName。当前状态=${DjiMsdkManager.initState.value}，${DjiMsdkManager.describeStatus()}",
+                -1,
+            )
+        }
+
         val snapshot = if (DjiConnectionManager.isConnected()) {
             DjiConnectionManager.connectionState.value
         } else {

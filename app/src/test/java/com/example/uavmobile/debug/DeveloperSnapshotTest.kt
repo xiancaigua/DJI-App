@@ -8,13 +8,21 @@ class DeveloperSnapshotTest {
     fun `format summary includes debug reading guide and waypoint diagnostics`() {
         val snapshot = DeveloperSnapshot(
             applicationId = "com.jzapp.mobile",
+            applicationIdIsDefault = false,
             djiSdkInitState = "REGISTERED",
+            buildConfigDjiEnableRuntime = true,
+            djiAppKeyEmpty = false,
+            djiRuntimeSkipped = false,
             djiKeyConnectionValue = true,
+            djiLastCallbackConnected = true,
+            djiEffectiveConnected = true,
             djiLastConnectionSource = "KEY_MANAGER_REFRESH",
             djiConnectionMonitorRunning = true,
             djiConnectionDiagnostics = DjiConnectionDiagnosticSnapshot(
                 productConnected = true,
+                effectiveConnected = true,
                 keyConnectionValue = true,
+                callbackConnected = true,
                 lastConnectionSource = "KEY_MANAGER_REFRESH",
                 monitorRunning = true,
                 monitorTickCount = 2,
@@ -55,8 +63,12 @@ class DeveloperSnapshotTest {
 
         assertTrue(summary.contains("诊断阅读说明："))
         assertTrue(summary.contains("applicationId 必须和 DJI 平台包名一致"))
+        assertTrue(summary.contains("buildConfig.DJI_ENABLE_RUNTIME: 是"))
+        assertTrue(summary.contains("djiAppKeyEmpty: 否"))
         assertTrue(summary.contains("DJI Connection Diagnostics："))
         assertTrue(summary.contains("keyConnectionValue: 是"))
+        assertTrue(summary.contains("callbackConnected: 是"))
+        assertTrue(summary.contains("effectiveConnected: 是"))
         assertTrue(summary.contains("monitorRunning: 是"))
         assertTrue(summary.contains("lastConnectionSource: KEY_MANAGER_REFRESH"))
         assertTrue(summary.contains("DJI Obstacle Avoidance Diagnostics："))

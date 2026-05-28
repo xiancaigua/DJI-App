@@ -206,7 +206,8 @@ object DjiMsdkManager {
             DjiSdkInitState.INITIALIZING,
             DjiSdkInitState.READY_TO_REGISTER,
             DjiSdkInitState.REGISTERING,
-            DjiSdkInitState.REGISTERED -> true
+            DjiSdkInitState.REGISTERED,
+            -> true
 
             else -> false
         }
@@ -223,7 +224,7 @@ object DjiMsdkManager {
     }
 
     fun isMissionFeatureAvailable(): Boolean {
-        return isSdkPresent() && isWpmzPresent()
+        return _initState.value == DjiSdkInitState.REGISTERED && isWpmzPresent()
     }
 
     fun describeStatus(): String = statusMessage.value
@@ -236,13 +237,13 @@ object DjiMsdkManager {
         return DjiRuntimeEnvironment.isProbablyVirtualDevice()
     }
 
-    private fun detectBlockedRuntimeReason(): String? {
-        return DjiRuntimeEnvironment.skipReason()
-    }
-
-    internal fun setInitStateForTest(state: DjiSdkInitState, sdkReady: Boolean = state == DjiSdkInitState.REGISTERED) {
+    internal fun setInitStateForTest(
+        state: DjiSdkInitState,
+        sdkReady: Boolean = state == DjiSdkInitState.REGISTERED,
+        statusMessage: String? = null,
+    ) {
         _initState.value = state
-        _statusMessage.value = when (state) {
+        _statusMessage.value = statusMessage ?: when (state) {
             DjiSdkInitState.REGISTERED -> "DJI registerApp 成功，测试状态"
             DjiSdkInitState.FAILED -> "DJI registerApp 失败，测试状态"
             else -> "DJI 测试状态：$state"

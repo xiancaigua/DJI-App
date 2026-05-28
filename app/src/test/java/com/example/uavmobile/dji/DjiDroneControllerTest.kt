@@ -44,6 +44,25 @@ class DjiDroneControllerTest {
         assertTrue(result.message.contains("当前没有连接 DJI 飞机"))
     }
 
+    @Test
+    fun `upload mission is blocked until sdk is registered even when aircraft is connected`() = runTest {
+        DjiConnectionManager.setConnectionReaderForTest(CountingConnectionReader(connectionValue = true))
+        DjiMsdkManager.setInitStateForTest(DjiSdkInitState.REGISTERING, sdkReady = true)
+
+        val result = DjiDroneController.uploadMission(
+            missionId = "mission-1",
+            waypoints = listOf(
+                MissionWaypoint(31.0, 121.0, 30f, 0f, 0f),
+                MissionWaypoint(31.1, 121.1, 35f, 0f, 0f),
+            ),
+            selectedDjiAircraftFamily = DjiAircraftFamily.M400,
+        )
+
+        assertFalse(result.success)
+        assertTrue(result.message.contains("DJI SDK"))
+        assertTrue(result.message.contains(DjiSdkInitState.REGISTERING.name))
+    }
+
     private class CountingConnectionReader(
         private val connectionValue: Boolean?,
     ) : DjiProductConnectionReader {

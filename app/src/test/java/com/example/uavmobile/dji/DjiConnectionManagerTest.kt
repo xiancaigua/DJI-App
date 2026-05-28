@@ -40,6 +40,54 @@ class DjiConnectionManagerTest {
     }
 
     @Test
+    fun `sdk callback connected with null key connection keeps effective connected while waiting sync`() {
+        DjiConnectionManager.setConnectionReaderForTest(
+            FakeConnectionReader(connectionValue = null, productType = null),
+        )
+
+        DjiConnectionManager.onProductConnected(101)
+
+        val snapshot = DjiConnectionManager.connectionState.value
+        assertTrue(snapshot.connected)
+        assertTrue(snapshot.effectiveConnected)
+        assertEquals(true, snapshot.callbackConnected)
+        assertNull(snapshot.keyConnectionValue)
+        assertTrue(snapshot.statusMessage.contains("waiting for ProductKey.KeyConnection synchronization"))
+    }
+
+    @Test
+    fun `key connection false overrides previous connected callback`() {
+        val reader = FakeConnectionReader(connectionValue = null, productType = null)
+        DjiConnectionManager.setConnectionReaderForTest(reader)
+
+        DjiConnectionManager.onProductConnected(102)
+        reader.connectionValue = false
+
+        val snapshot = DjiConnectionManager.refreshFromKeyManager("unit test false wins")
+
+        assertFalse(snapshot.connected)
+        assertFalse(snapshot.effectiveConnected)
+        assertEquals(true, snapshot.callbackConnected)
+        assertEquals(false, snapshot.keyConnectionValue)
+        assertTrue(snapshot.statusMessage.contains("KeyConnection=false"))
+    }
+
+    @Test
+    fun `key connection true with null product type still reports connected`() {
+        DjiConnectionManager.setConnectionReaderForTest(
+            FakeConnectionReader(connectionValue = true, productType = null),
+        )
+
+        val snapshot = DjiConnectionManager.refreshFromKeyManager("unit test product type not ready")
+
+        assertTrue(snapshot.connected)
+        assertTrue(snapshot.effectiveConnected)
+        assertEquals(true, snapshot.keyConnectionValue)
+        assertNull(snapshot.productType)
+        assertTrue(snapshot.statusMessage.contains("ProductType not ready yet"))
+    }
+
+    @Test
     fun `monitor start is idempotent`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         DjiConnectionManager.setMonitorDispatcherForTest(dispatcher)
@@ -78,6 +126,7 @@ class DjiConnectionManagerTest {
 
     private class FakeConnectionReader(
         var connectionValue: Boolean? = null,
+        var productType: ProductType? = null,
         private val connectionFailure: String? = null,
     ) : DjiProductConnectionReader {
         override fun readConnection(): Boolean? {
@@ -85,7 +134,7 @@ class DjiConnectionManagerTest {
             return connectionValue
         }
 
-        override fun readProductType(): ProductType? = null
+        override fun readProductType(): ProductType? = productType
 
         override fun listenConnection(holder: Any, getOnce: Boolean, onValueChange: (Boolean?) -> Unit) = Unit
 

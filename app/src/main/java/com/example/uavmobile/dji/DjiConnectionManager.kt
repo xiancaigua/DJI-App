@@ -33,9 +33,11 @@ enum class DjiConnectionSource {
 
 data class DjiConnectionSnapshot(
     val connected: Boolean = false,
+    val effectiveConnected: Boolean = false,
     val productId: Int? = null,
     val productType: ProductType? = null,
     val keyConnectionValue: Boolean? = null,
+    val callbackConnected: Boolean? = null,
     val lastConnectionSource: DjiConnectionSource = DjiConnectionSource.UNKNOWN,
     val lastRefreshReason: String = "",
     val lastRefreshSucceeded: Boolean = false,
@@ -131,7 +133,13 @@ object DjiConnectionManager {
                     source = DjiConnectionSource.CONNECTION_MONITOR_POLL,
                     logUnchanged = tick % HEARTBEAT_LOG_TICKS == 0,
                 )
-                delay(if (snapshot.connected) CONNECTED_POLL_INTERVAL_MS else DISCONNECTED_POLL_INTERVAL_MS)
+                delay(
+                    if (snapshot.keyConnectionValue == true) {
+                        CONNECTED_POLL_INTERVAL_MS
+                    } else {
+                        DISCONNECTED_POLL_INTERVAL_MS
+                    },
+                )
             }
         }
     }
@@ -198,31 +206,55 @@ object DjiConnectionManager {
             DeveloperLogStore.info(TAG, "KeyConnection listener 已安装", reason)
         }.onFailure { throwable ->
             DeveloperLogStore.warn(TAG, "KeyConnection listener 安装失败", throwable.message ?: "未知错误")
+            val previous = connectionState.value
             publishSnapshot(
-                connectionValue = connectionState.value.keyConnectionValue,
-                productType = connectionState.value.productType,
+                keyConnectionValue = previous.keyConnectionValue,
+                callbackConnected = previous.callbackConnected,
+                effectiveConnected = previous.effectiveConnected,
+                productType = previous.productType,
+                productId = previous.productId,
                 source = DjiConnectionSource.KEY_CONNECTION_LISTENER,
                 reason = reason,
                 succeeded = false,
                 error = throwable.message ?: "KeyConnection listener 安装失败",
-                statusMessage = connectionState.value.statusMessage,
+                statusMessage = previous.statusMessage,
                 logUnchanged = true,
             )
         }
     }
 
     private fun handleKeyConnectionListenerValue(value: Boolean?, reason: String) {
-        val productTypeRead = if (value == true) readProductTypeSafely() else KeyReadResult<ProductType?>(null, null)
+        val callbackConnected = connectionState.value.callbackConnected
+        val productTypeRead = if (value == true || (value == null && callbackConnected == true)) {
+            readProductTypeSafely()
+        } else {
+            KeyReadResult<ProductType?>(null, null)
+        }
         val error = productTypeRead.error.orEmpty()
+        if (callbackConnected != null && value != null && callbackConnected != value) {
+            DeveloperLogStore.warn(
+                TAG,
+                "DJI callback 与 KeyConnection 不一致",
+                "source=${DjiConnectionSource.KEY_CONNECTION_LISTENER}, callbackConnected=$callbackConnected, keyConnection=$value, reason=$reason",
+            )
+        }
+        val effectiveConnected = resolveEffectiveConnected(
+            keyConnectionValue = value,
+            callbackConnected = callbackConnected,
+        )
         publishSnapshot(
-            connectionValue = value,
-            productType = productTypeRead.value,
+            keyConnectionValue = value,
+            callbackConnected = callbackConnected,
+            effectiveConnected = effectiveConnected,
+            productType = productTypeRead.value.takeIf { effectiveConnected },
             source = DjiConnectionSource.KEY_CONNECTION_LISTENER,
             reason = "KeyConnection listener: $reason",
             succeeded = error.isBlank(),
             error = error,
             statusMessage = buildStatusMessage(
-                connected = value == true,
+                keyConnectionValue = value,
+                callbackConnected = callbackConnected,
+                effectiveConnected = effectiveConnected,
                 productType = productTypeRead.value,
                 source = DjiConnectionSource.KEY_CONNECTION_LISTENER,
                 error = error,
@@ -238,9 +270,11 @@ object DjiConnectionManager {
         callbackConnected: Boolean? = null,
         logUnchanged: Boolean,
     ): DjiConnectionSnapshot {
+        val previous = connectionState.value
+        val resolvedCallbackConnected = callbackConnected ?: previous.callbackConnected
         val connectionRead = readConnectionSafely()
         val keyConnection = connectionRead.value
-        val productTypeRead = if (keyConnection == true) {
+        val productTypeRead = if (keyConnection == true || (keyConnection == null && resolvedCallbackConnected == true)) {
             readProductTypeSafely()
         } else {
             KeyReadResult<ProductType?>(null, null)
@@ -249,25 +283,39 @@ object DjiConnectionManager {
             .filter { it.isNotBlank() }
             .joinToString("; ")
         val succeeded = error.isBlank()
+        val effectiveConnected = resolveEffectiveConnected(
+            keyConnectionValue = keyConnection,
+            callbackConnected = resolvedCallbackConnected,
+        )
 
-        if (callbackConnected != null && keyConnection != null && callbackConnected != keyConnection) {
+        if (resolvedCallbackConnected != null && keyConnection != null && resolvedCallbackConnected != keyConnection) {
             DeveloperLogStore.warn(
                 TAG,
                 "DJI callback 与 KeyConnection 不一致",
-                "source=$source, callbackConnected=$callbackConnected, keyConnection=$keyConnection, reason=$reason",
+                "source=$source, callbackConnected=$resolvedCallbackConnected, keyConnection=$keyConnection, reason=$reason",
             )
         }
 
         return publishSnapshot(
-            connectionValue = keyConnection,
-            productType = productTypeRead.value,
-            productId = callbackProductId ?: connectionState.value.productId,
+            keyConnectionValue = keyConnection,
+            callbackConnected = resolvedCallbackConnected,
+            effectiveConnected = effectiveConnected,
+            productType = productTypeRead.value.takeIf { effectiveConnected },
+            productId = resolveProductId(
+                previous = previous,
+                callbackProductId = callbackProductId,
+                keyConnectionValue = keyConnection,
+                effectiveConnected = effectiveConnected,
+                callbackConnected = resolvedCallbackConnected,
+            ),
             source = source,
             reason = reason,
             succeeded = succeeded,
             error = error,
             statusMessage = buildStatusMessage(
-                connected = keyConnection == true,
+                keyConnectionValue = keyConnection,
+                callbackConnected = resolvedCallbackConnected,
+                effectiveConnected = effectiveConnected,
                 productType = productTypeRead.value,
                 source = source,
                 error = error,
@@ -305,7 +353,9 @@ object DjiConnectionManager {
     }
 
     private fun publishSnapshot(
-        connectionValue: Boolean?,
+        keyConnectionValue: Boolean?,
+        callbackConnected: Boolean?,
+        effectiveConnected: Boolean,
         productType: ProductType?,
         productId: Int? = connectionState.value.productId,
         source: DjiConnectionSource,
@@ -317,10 +367,12 @@ object DjiConnectionManager {
     ): DjiConnectionSnapshot {
         val previous = connectionState.value
         val next = previous.copy(
-            connected = connectionValue == true,
+            connected = effectiveConnected,
+            effectiveConnected = effectiveConnected,
             productId = productId,
             productType = productType,
-            keyConnectionValue = connectionValue,
+            keyConnectionValue = keyConnectionValue,
+            callbackConnected = callbackConnected,
             lastConnectionSource = source,
             lastRefreshReason = reason,
             lastRefreshSucceeded = succeeded,
@@ -330,13 +382,17 @@ object DjiConnectionManager {
         _connectionState.value = next
 
         val changed = previous.connected != next.connected ||
+            previous.effectiveConnected != next.effectiveConnected ||
             previous.productType != next.productType ||
             previous.keyConnectionValue != next.keyConnectionValue ||
+            previous.callbackConnected != next.callbackConnected ||
             previous.lastRefreshError != next.lastRefreshError
 
         if (changed || logUnchanged || !succeeded) {
-            val details = "source=$source, reason=$reason, keyConnection=$connectionValue, " +
-                "productType=${productType?.name ?: "无"}, monitorRunning=${next.monitorRunning}, error=${error.ifBlank { "无" }}"
+            val details = "source=$source, reason=$reason, callbackConnected=$callbackConnected, " +
+                "keyConnection=$keyConnectionValue, effectiveConnected=$effectiveConnected, " +
+                "productType=${productType?.name ?: "无"}, monitorRunning=${next.monitorRunning}, " +
+                "error=${error.ifBlank { "无" }}"
             when {
                 !succeeded -> DeveloperLogStore.warn(TAG, statusMessage, details)
                 next.connected -> DeveloperLogStore.info(TAG, statusMessage, details)
@@ -375,22 +431,84 @@ object DjiConnectionManager {
     }
 
     private fun buildStatusMessage(
-        connected: Boolean,
+        keyConnectionValue: Boolean?,
+        callbackConnected: Boolean?,
+        effectiveConnected: Boolean,
         productType: ProductType?,
         source: DjiConnectionSource,
         error: String,
     ): String {
+        if (keyConnectionValue == false) {
+            return buildString {
+                append("DJI 飞机离线：ProductKey.KeyConnection=false")
+                if (callbackConnected == true) {
+                    append("，SDK callback 之前报告已连接，但当前以 KeyConnection=false 为准")
+                }
+                if (error.isNotBlank()) {
+                    append("，lastError=$error")
+                }
+                append("，source=$source")
+            }
+        }
+
+        if (keyConnectionValue == true) {
+            return buildString {
+                append("DJI 飞机已连接")
+                if (productType != null) {
+                    append("，productType=${productType.name}")
+                } else {
+                    append("，ProductType not ready yet")
+                }
+                if (error.isNotBlank()) {
+                    append("，lastError=$error")
+                }
+                append("，source=$source")
+            }
+        }
+
+        if (callbackConnected == true && effectiveConnected) {
+            return buildString {
+                append("DJI SDK callback shows product connected, waiting for ProductKey.KeyConnection synchronization")
+                if (productType != null) {
+                    append("，productType=${productType.name}")
+                } else {
+                    append("，ProductType not ready yet")
+                }
+                if (error.isNotBlank()) {
+                    append("，lastError=$error")
+                }
+                append("，source=$source")
+            }
+        }
+
         if (error.isNotBlank()) {
             return error
         }
-        return if (connected) {
-            buildString {
-                append("DJI 飞机已连接")
-                productType?.let { append("，productType=${it.name}") }
-                append("，source=$source")
-            }
-        } else {
-            "DJI 飞机离线，source=$source"
+        return "DJI 飞机离线，source=$source"
+    }
+
+    private fun resolveEffectiveConnected(
+        keyConnectionValue: Boolean?,
+        callbackConnected: Boolean?,
+    ): Boolean {
+        return when (keyConnectionValue) {
+            true -> true
+            false -> false
+            null -> callbackConnected == true
+        }
+    }
+
+    private fun resolveProductId(
+        previous: DjiConnectionSnapshot,
+        callbackProductId: Int?,
+        keyConnectionValue: Boolean?,
+        effectiveConnected: Boolean,
+        callbackConnected: Boolean?,
+    ): Int? {
+        return when {
+            effectiveConnected -> callbackProductId ?: previous.productId
+            keyConnectionValue == false || callbackConnected == false -> null
+            else -> callbackProductId ?: previous.productId
         }
     }
 

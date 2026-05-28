@@ -30,6 +30,7 @@ fun DeveloperPanelScreen(
     state: UavUiState,
     onClose: () -> Unit,
     onRefreshSnapshot: () -> Unit,
+    onDiagnoseDjiLink: () -> Unit,
     onCopyDiagnosticSummary: () -> Unit,
     onCopyRecentLogs: (Boolean) -> Unit,
     onClearLogs: () -> Unit,
@@ -63,6 +64,12 @@ fun DeveloperPanelScreen(
                 Button(onClick = onRefreshSnapshot, modifier = Modifier.weight(1f)) {
                     Text("刷新快照")
                 }
+                OutlinedButton(onClick = onDiagnoseDjiLink, modifier = Modifier.weight(1f)) {
+                    Text("诊断 DJI 链路")
+                }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
                     onClick = {
                         clipboardManager.setText(AnnotatedString(snapshot.formatSummary()))
@@ -116,6 +123,7 @@ fun DeveloperPanelScreen(
                 title = "功能说明",
                 lines = listOf(
                     "刷新快照：重新读取 App、ROS、DJI、飞机和任务状态。执行连接、上传、启动后先刷新一次。",
+                    "诊断 DJI 链路：触发 retryRegisterIfNeeded、KeyManager 刷新和连接监视器，适合现场排查 DJI 长期离线。",
                     "复制诊断摘要：复制结构化诊断，适合发给开发者或 ChatGPT 分析。",
                     "复制日志：复制最近运行日志，用来查看初始化、注册、上传、启动和报错顺序。",
                     "清空日志：清掉当前内存日志。清空后会显示“日志已清空”。",
@@ -127,7 +135,12 @@ fun DeveloperPanelScreen(
                 title = "应用信息",
                 lines = listOf(
                     "应用 ID：${snapshot.applicationId}",
+                    "应用 ID 为默认值：${if (snapshot.applicationIdIsDefault) "是" else "否"}",
                     "版本：${snapshot.versionName}",
+                    "BuildConfig.DJI_ENABLE_RUNTIME：${if (snapshot.buildConfigDjiEnableRuntime) "true" else "false"}",
+                    "App Key 为空：${if (snapshot.djiAppKeyEmpty) "true" else "false"}",
+                    "DJI runtime 已跳过：${if (snapshot.djiRuntimeSkipped) "是" else "否"}",
+                    "DJI runtime 跳过原因：${snapshot.djiRuntimeSkipReason.ifBlank { "无" }}",
                     "当前后端：${snapshot.activeBackendLabel}",
                     "目标机型：${snapshot.selectedDjiAircraftFamilyLabel}",
                     "顶部状态：${snapshot.topStatusLabel.ifBlank { "无" }}",
@@ -153,8 +166,11 @@ fun DeveloperPanelScreen(
                     "SDK 状态：${snapshot.djiSdkInitState}",
                     "SDK 文本：${snapshot.djiSdkStatusMessage}",
                     "产品已连接：${if (snapshot.djiProductConnected) "是" else "否"}",
+                    "effectiveConnected：${if (snapshot.djiEffectiveConnected) "是" else "否"}",
                     "产品 ID：${snapshot.djiProductId ?: "无"}",
                     "产品类型：${snapshot.djiProductTypeLabel.ifBlank { "无" }}",
+                    "KeyConnection：${snapshot.djiKeyConnectionValue?.toChineseBool() ?: "无"}",
+                    "callbackConnected：${snapshot.djiLastCallbackConnected?.toChineseBool() ?: "无"}",
                     "连接文本：${snapshot.djiProductStatusMessage}",
                 ),
             )
@@ -163,8 +179,10 @@ fun DeveloperPanelScreen(
                 title = "DJI Connection Diagnostics",
                 lines = listOf(
                     "djiProductConnected：${snapshot.djiConnectionDiagnostics.productConnected.toChineseBool()}",
+                    "effectiveConnected：${snapshot.djiConnectionDiagnostics.effectiveConnected.toChineseBool()}",
                     "productType：${snapshot.djiConnectionDiagnostics.productType.ifBlank { "无" }}",
                     "keyConnectionValue：${snapshot.djiConnectionDiagnostics.keyConnectionValue?.toChineseBool() ?: "无"}",
+                    "callbackConnected：${snapshot.djiConnectionDiagnostics.callbackConnected?.toChineseBool() ?: "无"}",
                     "lastConnectionSource：${snapshot.djiConnectionDiagnostics.lastConnectionSource.ifBlank { "无" }}",
                     "lastRefreshReason：${snapshot.djiConnectionDiagnostics.lastRefreshReason.ifBlank { "无" }}",
                     "lastRefreshSucceeded：${snapshot.djiConnectionDiagnostics.lastRefreshSucceeded.toChineseBool()}",
@@ -229,6 +247,8 @@ fun DeveloperPanelScreen(
                 title = "DJI 连接判断说明",
                 lines = listOf(
                     "SDK registered 不等于飞机已连接。",
+                    "KeyConnection 是最高优先级；如果它明确为 false，就必须按离线处理。",
+                    "如果 SDK callback 已报告 connected，但 KeyConnection 还没同步，effectiveConnected 会暂时跟随 callback，并继续轮询 KeyManager。",
                     "如果 callback 没来，但 KeyConnection=true，说明应以 KeyConnection 主动刷新结果为准。",
                     "如果官方 DJI App 能连接但本 App KeyConnection=false，优先检查官方 App 是否占用连接、当前 App 是否运行在正确设备、包名/App Key 是否正确、权限是否完整、MSDK 是否初始化完成。",
                 ),

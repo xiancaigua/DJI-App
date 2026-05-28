@@ -52,6 +52,6 @@ class DjiRuntimeEnvironmentTest {
         )
 
         assertTrue(decision.shouldSkip)
-        assertTrue(decision.reason.orEmpty().contains("已被配置关闭"))
+        assertTrue(decision.reason.orEmpty().contains("AIRCRAFT_API_KEY"))
     }
 }

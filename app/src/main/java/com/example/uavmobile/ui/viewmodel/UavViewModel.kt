@@ -37,6 +37,7 @@ import com.example.uavmobile.dji.DjiConnectionManager
 import com.example.uavmobile.dji.DjiDroneController
 import com.example.uavmobile.dji.DjiMsdkManager
 import com.example.uavmobile.dji.DjiPermissionSnapshot
+import com.example.uavmobile.dji.DjiRuntimeEnvironment
 import com.example.uavmobile.dji.DjiSdkInitState
 import com.example.uavmobile.dji.DjiWaypointMissionManager
 import com.example.uavmobile.dji.ObstacleAvoidanceSafetyManager
@@ -77,10 +78,12 @@ data class UavUiState(
     val djiSdkInitState: DjiSdkInitState = DjiMsdkManager.initState.value,
     val djiSdkStatusMessage: String = DjiMsdkManager.describeStatus(),
     val djiProductConnected: Boolean = false,
+    val djiEffectiveConnected: Boolean = false,
     val djiProductId: Int? = null,
     val djiProductTypeLabel: String = "",
     val djiProductStatusMessage: String = DjiConnectionManager.describeStatus(),
     val djiKeyConnectionValue: Boolean? = null,
+    val djiCallbackConnected: Boolean? = null,
     val djiLastConnectionSource: String = "",
     val djiLastRefreshReason: String = "",
     val djiLastRefreshSucceeded: Boolean = false,
@@ -267,10 +270,12 @@ class UavViewModel(
                 updateState { current ->
                     current.copy(
                         djiProductConnected = connection.connected,
+                        djiEffectiveConnected = connection.effectiveConnected,
                         djiProductId = connection.productId,
                         djiProductTypeLabel = connection.productType?.name.orEmpty(),
                         djiProductStatusMessage = connection.statusMessage,
                         djiKeyConnectionValue = connection.keyConnectionValue,
+                        djiCallbackConnected = connection.callbackConnected,
                         djiLastConnectionSource = connection.lastConnectionSource.name,
                         djiLastRefreshReason = connection.lastRefreshReason,
                         djiLastRefreshSucceeded = connection.lastRefreshSucceeded,
@@ -799,18 +804,34 @@ class UavViewModel(
             return false
         }
         return when (state.djiSdkInitState) {
-            DjiSdkInitState.SKIPPED,
-            DjiSdkInitState.FAILED,
-            -> {
-                pushStatus("DJI 当前不可执行 $actionName。${state.djiSdkStatusMessage}")
+            DjiSdkInitState.IDLE -> {
+                pushStatus("DJI 尚未初始化，暂时不能执行 $actionName。请先完成初始化并等待 registerApp 完成。${state.djiSdkStatusMessage}")
                 false
             }
 
-            else -> {
+            DjiSdkInitState.INITIALIZING,
+            DjiSdkInitState.READY_TO_REGISTER,
+            DjiSdkInitState.REGISTERING,
+            -> {
+                DjiMsdkManager.retryRegisterIfNeeded("ensureDjiReady: $actionName")
+                pushStatus("DJI 正在初始化/注册，暂时不能执行 $actionName。请等待注册完成后重试。当前状态=${state.djiSdkInitState}，${state.djiSdkStatusMessage}")
+                false
+            }
+
+            DjiSdkInitState.SKIPPED,
+            DjiSdkInitState.FAILED,
+            -> {
+                pushStatus("DJI 当前不可执行 $actionName。请检查 App Key、applicationId、网络、DJI_ENABLE_RUNTIME。${state.djiSdkStatusMessage}")
+                false
+            }
+
+            DjiSdkInitState.REGISTERED -> {
                 if (!state.djiProductConnected) {
                     pushStatus(
-                        "DJI 当前不可执行 $actionName。SDK registered 不等于飞机已连接；" +
-                            "当前飞机离线，KeyConnection=${state.djiKeyConnectionValue ?: "无"}。",
+                        "DJI SDK 已注册，但当前仍不能执行 $actionName。请检查遥控器-飞机连接、ProductKey.KeyConnection、Pilot 2 是否能看到飞机。" +
+                            " callbackConnected=${state.djiCallbackConnected?.toString() ?: "null"}," +
+                            " KeyConnection=${state.djiKeyConnectionValue?.toString() ?: "null"}," +
+                            " source=${state.djiLastConnectionSource.ifBlank { "UNKNOWN" }}。",
                     )
                     false
                 } else {
@@ -957,9 +978,15 @@ class UavViewModel(
     private fun buildDeveloperSnapshot(state: UavUiState): DeveloperSnapshot {
         val selectedMission = state.missions.firstOrNull { it.missionId == state.selectedMissionId }
         val djiMissionState = currentDjiMissionState()
+        val runtimeDecision = DjiRuntimeEnvironment.currentDecision()
         return DeveloperSnapshot(
             applicationId = BuildConfig.APPLICATION_ID,
+            applicationIdIsDefault = BuildConfig.APP_APPLICATION_ID_IS_DEFAULT,
             versionName = BuildConfig.VERSION_NAME,
+            buildConfigDjiEnableRuntime = BuildConfig.DJI_ENABLE_RUNTIME,
+            djiAppKeyEmpty = BuildConfig.DJI_APP_KEY_EMPTY,
+            djiRuntimeSkipped = runtimeDecision.shouldSkip,
+            djiRuntimeSkipReason = runtimeDecision.reason.orEmpty(),
             activeBackendLabel = state.activeBackend.displayLabel(),
             selectedDjiAircraftFamilyLabel = state.selectedDjiAircraftFamily.displayLabel(),
             topStatusLabel = state.topStatusLabel,
@@ -973,10 +1000,12 @@ class UavViewModel(
             djiSdkInitState = state.djiSdkInitState.name,
             djiSdkStatusMessage = state.djiSdkStatusMessage,
             djiProductConnected = state.djiProductConnected,
+            djiEffectiveConnected = state.djiEffectiveConnected,
             djiProductId = state.djiProductId,
             djiProductTypeLabel = state.djiProductTypeLabel,
             djiProductStatusMessage = state.djiProductStatusMessage,
             djiKeyConnectionValue = state.djiKeyConnectionValue,
+            djiLastCallbackConnected = state.djiCallbackConnected,
             djiLastConnectionSource = state.djiLastConnectionSource,
             djiLastRefreshReason = state.djiLastRefreshReason,
             djiLastRefreshSucceeded = state.djiLastRefreshSucceeded,
@@ -1038,8 +1067,10 @@ class UavViewModel(
             ),
             djiConnectionDiagnostics = DjiConnectionDiagnosticSnapshot(
                 productConnected = state.djiProductConnected,
+                effectiveConnected = state.djiEffectiveConnected,
                 productType = state.djiProductTypeLabel,
                 keyConnectionValue = state.djiKeyConnectionValue,
+                callbackConnected = state.djiCallbackConnected,
                 lastConnectionSource = state.djiLastConnectionSource,
                 lastRefreshReason = state.djiLastRefreshReason,
                 lastRefreshSucceeded = state.djiLastRefreshSucceeded,
@@ -1101,6 +1132,34 @@ class UavViewModel(
             MissionExecutionSnapshot(
                 lastDjiWaypointError = throwable.message ?: "DJI waypoint mission state unavailable",
                 lastDjiWaypointErrorHint = "JVM 单测或非 DJI runtime 可能无法初始化 DJI waypoint listener；真机运行时请查看 Developer Panel 日志。",
+            )
+        }
+    }
+
+    fun diagnoseDjiLink() {
+        DeveloperLogStore.info(TAG, "手动触发 DJI 链路诊断")
+        DjiMsdkManager.retryRegisterIfNeeded("manual DJI link diagnose")
+        val snapshot = DjiConnectionManager.refreshFromKeyManager("manual DJI link diagnose")
+        DjiConnectionManager.startConnectionMonitor("manual DJI link diagnose")
+        DeveloperLogStore.info(
+            TAG,
+            "DJI 链路诊断结果",
+            "sdkState=${DjiMsdkManager.initState.value}, callbackConnected=${snapshot.callbackConnected}, " +
+                "keyConnection=${snapshot.keyConnectionValue}, effectiveConnected=${snapshot.effectiveConnected}, " +
+                "productType=${snapshot.productType?.name ?: "无"}, lastError=${snapshot.lastRefreshError.ifBlank { "无" }}",
+        )
+        if (uiState.value.activeBackend == DroneBackend.DJI) {
+            runCatching {
+                AircraftCameraStreamManager.refreshAvailableCameras("manual DJI link diagnose")
+            }.onFailure { throwable ->
+                DeveloperLogStore.warn(TAG, "DJI 视频源诊断刷新失败", throwable.message)
+            }
+        }
+        refreshCurrentDroneState(force = true)
+        updateState {
+            it.copy(
+                statusMessage = "DJI 链路诊断已执行",
+                developerPanelStatusMessage = "DJI 链路诊断已执行。优先查看 callbackConnected、KeyConnection、effectiveConnected 和 runtime 原因。",
             )
         }
     }

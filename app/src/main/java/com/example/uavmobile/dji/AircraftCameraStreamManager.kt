@@ -715,6 +715,8 @@ private class DefaultDjiCameraStreamClient : DjiCameraStreamClient {
                 lastAvailableCameraIndexes = availableCameraList.map { it.toDjiCameraIndex() }
                 callback(lastAvailableCameraIndexes)
             }
+
+            override fun onCameraStreamEnableUpdate(cameraStreamEnableMap: MutableMap<ComponentIndexType, Boolean>) = Unit
         }
         cameraUpdatedListener = listener
         cameraManager().addAvailableCameraUpdatedListener(listener)

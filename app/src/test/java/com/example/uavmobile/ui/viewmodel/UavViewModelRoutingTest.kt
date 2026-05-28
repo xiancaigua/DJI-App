@@ -16,7 +16,9 @@ import com.example.uavmobile.dji.DjiCameraIndex
 import com.example.uavmobile.dji.DjiCameraStreamClient
 import com.example.uavmobile.dji.DjiProductConnectionReader
 import com.example.uavmobile.dji.DjiRawStreamInfo
+import com.example.uavmobile.dji.DjiMsdkManager
 import com.example.uavmobile.dji.DjiPermissionSnapshot
+import com.example.uavmobile.dji.DjiSdkInitState
 import dji.sdk.keyvalue.value.product.ProductType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -36,6 +38,7 @@ class UavViewModelRoutingTest {
     fun tearDown() {
         AircraftCameraStreamManager.resetForTest()
         DjiConnectionManager.resetForTest()
+        DjiMsdkManager.resetForTest()
     }
 
     @Test
@@ -75,6 +78,7 @@ class UavViewModelRoutingTest {
 
     @Test
     fun `dji backend mission actions route to dji controller`() = runTest {
+        DjiMsdkManager.setInitStateForTest(DjiSdkInitState.REGISTERED)
         DjiConnectionManager.setConnectionReaderForTest(FakeConnectionReader(connectionValue = true))
         DjiConnectionManager.refreshFromKeyManager("routing test")
         val selfController = FakeDroneController("self")
@@ -119,6 +123,7 @@ class UavViewModelRoutingTest {
 
     @Test
     fun `entering dji control page initializes camera stream`() = runTest {
+        DjiMsdkManager.setInitStateForTest(DjiSdkInitState.REGISTERED)
         val fakeCamera = FakeCameraStreamClient(
             productTypeName = "DJI_MATRICE_400",
             indexes = listOf(DjiCameraIndex("FPV", 7)),
@@ -145,6 +150,7 @@ class UavViewModelRoutingTest {
 
     @Test
     fun `dji start mission warns when video unavailable but does not block start`() = runTest {
+        DjiMsdkManager.setInitStateForTest(DjiSdkInitState.REGISTERED)
         DjiConnectionManager.setConnectionReaderForTest(FakeConnectionReader(connectionValue = true))
         DjiConnectionManager.refreshFromKeyManager("routing test")
         val djiController = FakeDroneController("dji")
@@ -167,6 +173,79 @@ class UavViewModelRoutingTest {
 
             assertEquals(1, djiController.startMissionCalls)
             assertTrue(viewModel.uiState.value.cameraStream.warningMessage.contains("视频"))
+        } finally {
+            viewModel.clearForTest()
+        }
+    }
+
+    @Test
+    fun `ensure dji ready blocks mission actions until sdk registered`() = runTest {
+        val pendingStates = listOf(
+            DjiSdkInitState.INITIALIZING,
+            DjiSdkInitState.READY_TO_REGISTER,
+            DjiSdkInitState.REGISTERING,
+        )
+
+        pendingStates.forEach { pendingState ->
+            DjiConnectionManager.resetForTest()
+            DjiMsdkManager.resetForTest()
+            DjiMsdkManager.setInitStateForTest(pendingState, sdkReady = pendingState != DjiSdkInitState.INITIALIZING)
+            DjiConnectionManager.setConnectionReaderForTest(FakeConnectionReader(connectionValue = true))
+            DjiConnectionManager.refreshFromKeyManager("pending state $pendingState")
+            val djiController = FakeDroneController("dji-$pendingState")
+            val viewModel = UavViewModel(
+                repository = UavRepository(),
+                selfDroneController = FakeDroneController("self-$pendingState"),
+                djiDroneController = djiController,
+            )
+            try {
+                viewModel.onDjiPermissionStateChanged(
+                    DjiPermissionSnapshot(
+                        requiredPermissions = listOf("android.permission.ACCESS_FINE_LOCATION"),
+                        missingPermissions = emptyList(),
+                    ),
+                )
+                viewModel.onActiveBackendChanged(DroneBackend.DJI)
+
+                viewModel.startMission()
+                runCurrent()
+
+                assertEquals(0, djiController.startMissionCalls)
+                assertTrue(viewModel.uiState.value.statusMessage.contains("等待注册完成"))
+            } finally {
+                viewModel.clearForTest()
+            }
+        }
+    }
+
+    @Test
+    fun `ensure dji ready shows clear message when runtime skipped`() = runTest {
+        DjiMsdkManager.setInitStateForTest(
+            state = DjiSdkInitState.SKIPPED,
+            sdkReady = false,
+            statusMessage = "DJI runtime disabled. Check AIRCRAFT_API_KEY / DJI_ENABLE_RUNTIME / local.properties.",
+        )
+        val djiController = FakeDroneController("dji")
+        val viewModel = UavViewModel(
+            repository = UavRepository(),
+            selfDroneController = FakeDroneController("self"),
+            djiDroneController = djiController,
+        )
+        try {
+            viewModel.onDjiPermissionStateChanged(
+                DjiPermissionSnapshot(
+                    requiredPermissions = listOf("android.permission.ACCESS_FINE_LOCATION"),
+                    missingPermissions = emptyList(),
+                ),
+            )
+            viewModel.onActiveBackendChanged(DroneBackend.DJI)
+
+            viewModel.startMission()
+            runCurrent()
+
+            assertEquals(0, djiController.startMissionCalls)
+            assertTrue(viewModel.uiState.value.statusMessage.contains("DJI_ENABLE_RUNTIME"))
+            assertTrue(viewModel.uiState.value.statusMessage.contains("App Key"))
         } finally {
             viewModel.clearForTest()
         }

@@ -4,12 +4,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+import org.gradle.api.GradleException
 import java.util.Properties
 
+val defaultAppApplicationId = "com.example.uavmobile"
+val localPropertiesFile = rootProject.file("local.properties")
 val localProperties = Properties().apply {
-    val file = rootProject.file("local.properties")
-    if (file.exists()) {
-        file.inputStream().use(::load)
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
     }
 }
 
@@ -18,19 +20,66 @@ val djiWpmzVersion = "1.0.4.0"
 val composeBomVersion = "2024.09.00"
 val activityComposeVersion = "1.9.2"
 val lifecycleVersion = "2.8.6"
-val requestedAppApplicationId = providers.gradleProperty("APP_APPLICATION_ID")
-    .orElse(localProperties.getProperty("APP_APPLICATION_ID") ?: "com.example.uavmobile")
-    .get()
-val appApplicationIdPattern = Regex("""^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$""")
-val appApplicationId = requestedAppApplicationId.takeIf { appApplicationIdPattern.matches(it) }
-    ?: "com.example.uavmobile"
-val djiAppKey = providers.gradleProperty("AIRCRAFT_API_KEY")
-    .orElse(localProperties.getProperty("AIRCRAFT_API_KEY") ?: "")
-    .get()
-val enableDjiRuntime = providers.gradleProperty("DJI_ENABLE_RUNTIME")
-    .orElse(localProperties.getProperty("DJI_ENABLE_RUNTIME") ?: if (djiAppKey.isNotBlank()) "true" else "false")
+
+fun localProperty(name: String): String? = localProperties.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
+
+val requireDjiRuntime = providers.gradleProperty("REQUIRE_DJI_RUNTIME")
+    .orElse("false")
     .get()
     .toBoolean()
+val requestedAppApplicationId = providers.gradleProperty("APP_APPLICATION_ID")
+    .orElse(localProperty("APP_APPLICATION_ID") ?: defaultAppApplicationId)
+    .get()
+    .trim()
+val appApplicationIdPattern = Regex("""^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$""")
+val appApplicationId = requestedAppApplicationId.takeIf { appApplicationIdPattern.matches(it) }
+    ?: defaultAppApplicationId
+val appApplicationIdIsDefault = appApplicationId == defaultAppApplicationId
+val djiAppKey = providers.gradleProperty("AIRCRAFT_API_KEY")
+    .orElse(localProperty("AIRCRAFT_API_KEY") ?: "")
+    .get()
+    .trim()
+val djiAppKeyEmpty = djiAppKey.isBlank()
+val enableDjiRuntime = providers.gradleProperty("DJI_ENABLE_RUNTIME")
+    .orElse(localProperty("DJI_ENABLE_RUNTIME") ?: if (djiAppKey.isNotBlank()) "true" else "false")
+    .get()
+    .trim()
+    .toBoolean()
+
+if (requireDjiRuntime) {
+    val validationErrors = buildList {
+        if (appApplicationIdIsDefault) {
+            add("applicationId 回退到了 $defaultAppApplicationId")
+        }
+        if (djiAppKeyEmpty) {
+            add("AIRCRAFT_API_KEY 为空")
+        }
+        if (!enableDjiRuntime) {
+            add("DJI_ENABLE_RUNTIME=false")
+        }
+    }
+    if (validationErrors.isNotEmpty()) {
+        throw GradleException(
+            """
+            REQUIRE_DJI_RUNTIME=true，但当前 DJI 真机调试配置无效。
+            请检查仓库根目录 local.properties：${localPropertiesFile.absolutePath}
+            必须确认：
+            - APP_APPLICATION_ID
+            - AIRCRAFT_API_KEY
+            - DJI_ENABLE_RUNTIME
+            当前解析结果：
+            - APPLICATION_ID=$appApplicationId
+            - APP_APPLICATION_ID_IS_DEFAULT=$appApplicationIdIsDefault
+            - DJI_APP_KEY_EMPTY=$djiAppKeyEmpty
+            - DJI_ENABLE_RUNTIME=$enableDjiRuntime
+            - DJI_SDK_VERSION=$djiSdkVersion
+            - DJI_WPMZ_VERSION=$djiWpmzVersion
+            失败原因：
+            ${validationErrors.joinToString(separator = System.lineSeparator()) { "- $it" }}
+            """.trimIndent(),
+        )
+    }
+}
 
 android {
     namespace = "com.example.uavmobile"
@@ -45,6 +94,8 @@ android {
         multiDexEnabled = true
         manifestPlaceholders["API_KEY"] = djiAppKey
         buildConfigField("boolean", "DJI_ENABLE_RUNTIME", enableDjiRuntime.toString())
+        buildConfigField("boolean", "DJI_APP_KEY_EMPTY", djiAppKeyEmpty.toString())
+        buildConfigField("boolean", "APP_APPLICATION_ID_IS_DEFAULT", appApplicationIdIsDefault.toString())
         buildConfigField("String", "DJI_SDK_VERSION", "\"$djiSdkVersion\"")
         buildConfigField("String", "DJI_WPMZ_VERSION", "\"$djiWpmzVersion\"")
 

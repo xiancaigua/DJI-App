@@ -66,6 +66,7 @@ fun UavApp(
             state = state,
             onClose = viewModel::closeDeveloperPanel,
             onRefreshSnapshot = viewModel::refreshDeveloperSnapshot,
+            onDiagnoseDjiLink = viewModel::diagnoseDjiLink,
             onCopyDiagnosticSummary = viewModel::onDeveloperSummaryCopied,
             onCopyRecentLogs = viewModel::onDeveloperLogsCopied,
             onClearLogs = viewModel::clearDeveloperLogs,
